@@ -34,9 +34,47 @@ graph TB
 
 ## Integration Process
 
-### Step 1: Build Images
+### Automatic Build from Git Repositories
 
-Build images from their respective repositories:
+The `kube.yaml` file automatically builds images from the Git repositories. The build jobs:
+
+1. Clone the backend and frontend repositories from GitHub
+2. Build Docker images using Kaniko
+3. Push images to a local registry
+4. Deploy the applications using those images
+
+### Configuration
+
+Repository URLs and branches are configured in a ConfigMap:
+
+```yaml
+BACKEND_REPO_URL: "https://github.com/DiegoBarrosA/openflow-backend.git"
+FRONTEND_REPO_URL: "https://github.com/DiegoBarrosA/openflow-frontend.git"
+BACKEND_BRANCH: "main"
+FRONTEND_BRANCH: "main"
+```
+
+To use different repositories or branches, update the `build-config` ConfigMap in `kube.yaml`.
+
+### Step 1: Deploy Stack
+
+The deployment automatically builds images from the repositories:
+
+```bash
+cd openflow-deployment
+podman network create openflow-network
+podman play kube --network openflow-network --publish 8080:8080 --publish 3000:3000 kube.yaml
+```
+
+The build jobs will:
+- Clone the repositories
+- Build the images
+- Push to local registry
+- Deploy the applications
+
+### Manual Build (Alternative)
+
+If you prefer to build images manually before deployment:
 
 ```bash
 # Backend
@@ -48,15 +86,7 @@ cd openflow-frontend
 podman build -t openflow-frontend:latest .
 ```
 
-### Step 2: Deploy Stack
-
-Use this repository's `kube.yaml` to deploy:
-
-```bash
-cd openflow-deployment
-podman network create openflow-network
-podman play kube --network openflow-network --publish 8080:8080 --publish 3000:3000 kube.yaml
-```
+Then modify `kube.yaml` to remove the build jobs and reference pre-built images.
 
 ## Service Communication
 
@@ -117,21 +147,38 @@ Services communicate via Podman network:
 
 ```mermaid
 graph LR
-    A[Backend Repo] --> B[Build Backend Image]
-    C[Frontend Repo] --> D[Build Frontend Image]
-    B --> E[Push to Registry]
-    D --> E
-    E --> F[Deploy Repo]
-    F --> G[Deploy Stack]
+    A[Backend Repo] --> B[Git Clone]
+    C[Frontend Repo] --> D[Git Clone]
+    B --> E[Kaniko Build]
+    D --> F[Kaniko Build]
+    E --> G[Local Registry]
+    F --> G
+    G --> H[Deploy Stack]
 ```
 
 ### Deployment Workflow
 
-1. Backend CI builds and pushes image
-2. Frontend CI builds and pushes image
-3. Deployment repo CI pulls images
-4. Deployment repo CI runs `podman play kube`
+1. Build jobs clone repositories from GitHub
+2. Kaniko builds images from cloned repositories
+3. Images are pushed to local registry
+4. Deployments pull images from local registry
 5. Stack is deployed
+
+### Using Different Repositories
+
+To use different repositories or branches, update the `build-config` ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: build-config
+data:
+  BACKEND_REPO_URL: "https://github.com/your-org/your-backend.git"
+  FRONTEND_REPO_URL: "https://github.com/your-org/your-frontend.git"
+  BACKEND_BRANCH: "develop"
+  FRONTEND_BRANCH: "develop"
+```
 
 ## Version Management
 
@@ -221,4 +268,7 @@ Create integration tests that:
 - Test frontend functionality
 - Verify integration points
 - Clean up after tests
+
+
+
 

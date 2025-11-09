@@ -1,53 +1,240 @@
-apiVersion: v1
-kind: Pod
+# Local Docker Registry for built images
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: openflow
+  name: local-registry
   labels:
-    app: openflow
+    app: local-registry
 spec:
-  containers:
-    - name: backend
-      image: openflow-backend:latest
-      ports:
-        - containerPort: 8080
-      env:
-        - name: SPRING_DATASOURCE_URL
-          value: "jdbc:h2:mem:openflowdb"
-        - name: JWT_SECRET
-          value: "openflow-secret-key-change-in-production"
-        - name: CORS_ALLOWED_ORIGINS
-          value: "http://localhost:3000"
-      resources:
-        requests:
-          memory: "512Mi"
-          cpu: "250m"
-        limits:
-          memory: "1Gi"
-          cpu: "500m"
-    - name: frontend
-      image: openflow-frontend:latest
-      ports:
-        - containerPort: 3000
-      env:
-        - name: VITE_API_BASE_URL
-          value: "/api"
-      resources:
-        requests:
-          memory: "128Mi"
-          cpu: "100m"
-        limits:
-          memory: "256Mi"
-          cpu: "200m"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: local-registry
+  template:
+    metadata:
+      labels:
+        app: local-registry
+    spec:
+      containers:
+        - name: registry
+          image: docker.io/library/registry:2
+          ports:
+            - containerPort: 5000
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-registry
+  labels:
+    app: local-registry
+spec:
+  selector:
+    app: local-registry
+  ports:
+    - port: 5000
+      targetPort: 5000
+---
+# ConfigMap for repository URLs and build configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: build-config
+data:
+  BACKEND_REPO_URL: "https://github.com/DiegoBarrosA/openflow-backend.git"
+  FRONTEND_REPO_URL: "https://github.com/DiegoBarrosA/openflow-frontend.git"
+  BACKEND_BRANCH: "main"
+  FRONTEND_BRANCH: "main"
+  REGISTRY_URL: "local-registry:5000"
+---
+# Build backend image using Kaniko from Git repository
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: build-backend
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: git-clone
+          image: docker.io/library/alpine/git:latest
+          command:
+            - sh
+            - -c
+            - |
+              git clone --branch ${BACKEND_BRANCH} --depth 1 ${BACKEND_REPO_URL} /workspace/backend
+              echo "Backend repository cloned successfully"
+          env:
+            - name: BACKEND_REPO_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: build-config
+                  key: BACKEND_REPO_URL
+            - name: BACKEND_BRANCH
+              valueFrom:
+                configMapKeyRef:
+                  name: build-config
+                  key: BACKEND_BRANCH
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      containers:
+        - name: kaniko
+          image: gcr.io/kaniko-project/executor:latest
+          args:
+            - --dockerfile=Dockerfile
+            - --context=dir:///workspace/backend
+            - --destination=local-registry:5000/openflow-backend:latest
+            - --insecure
+            - --skip-tls-verify
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: workspace
+          emptyDir: {}
+      restartPolicy: Never
+  backoffLimit: 3
+---
+# Build frontend image using Kaniko from Git repository
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: build-frontend
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: git-clone
+          image: docker.io/library/alpine/git:latest
+          command:
+            - sh
+            - -c
+            - |
+              git clone --branch ${FRONTEND_BRANCH} --depth 1 ${FRONTEND_REPO_URL} /workspace/frontend
+              echo "Frontend repository cloned successfully"
+          env:
+            - name: FRONTEND_REPO_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: build-config
+                  key: FRONTEND_REPO_URL
+            - name: FRONTEND_BRANCH
+              valueFrom:
+                configMapKeyRef:
+                  name: build-config
+                  key: FRONTEND_BRANCH
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      containers:
+        - name: kaniko
+          image: gcr.io/kaniko-project/executor:latest
+          args:
+            - --dockerfile=Dockerfile
+            - --context=dir:///workspace/frontend
+            - --destination=local-registry:5000/openflow-frontend:latest
+            - --insecure
+            - --skip-tls-verify
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: workspace
+          emptyDir: {}
+      restartPolicy: Never
+  backoffLimit: 3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openflow-backend
+  labels:
+    app: openflow-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openflow-backend
+  template:
+    metadata:
+      labels:
+        app: openflow-backend
+    spec:
+      initContainers:
+        - name: wait-for-build
+          image: docker.io/curlimages/curl:latest
+          command: ['sh', '-c', 'until curl -f http://local-registry:5000/v2/openflow-backend/manifests/latest 2>/dev/null; do echo "Waiting for backend build..."; sleep 5; done; echo "Backend build complete!"']
+      containers:
+        - name: backend
+          image: local-registry:5000/openflow-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:h2:mem:openflowdb"
+            - name: JWT_SECRET
+              value: "openflow-secret-key-change-in-production"
+            - name: CORS_ALLOWED_ORIGINS
+              value: "http://localhost:3000"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openflow-frontend
+  labels:
+    app: openflow-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openflow-frontend
+  template:
+    metadata:
+      labels:
+        app: openflow-frontend
+    spec:
+      initContainers:
+        - name: wait-for-build
+          image: docker.io/curlimages/curl:latest
+          command: ['sh', '-c', 'until curl -f http://local-registry:5000/v2/openflow-frontend/manifests/latest 2>/dev/null; do echo "Waiting for frontend build..."; sleep 5; done; echo "Frontend build complete!"']
+      containers:
+        - name: frontend
+          image: local-registry:5000/openflow-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: VITE_API_BASE_URL
+              value: "/api"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: openflow-backend
   labels:
-    app: openflow
+    app: openflow-backend
 spec:
   selector:
-    app: openflow
+    app: openflow-backend
   ports:
     - name: http
       port: 8080
@@ -59,10 +246,10 @@ kind: Service
 metadata:
   name: openflow-frontend
   labels:
-    app: openflow
+    app: openflow-frontend
 spec:
   selector:
-    app: openflow
+    app: openflow-frontend
   ports:
     - name: http
       port: 3000
