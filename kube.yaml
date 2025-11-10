@@ -1,152 +1,3 @@
-# Local Docker Registry for built images
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: local-registry
-  labels:
-    app: local-registry
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: local-registry
-  template:
-    metadata:
-      labels:
-        app: local-registry
-    spec:
-      containers:
-        - name: registry
-          image: docker.io/library/registry:2
-          ports:
-            - containerPort: 5000
-          resources:
-            requests:
-              memory: "128Mi"
-              cpu: "100m"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: local-registry
-  labels:
-    app: local-registry
-spec:
-  selector:
-    app: local-registry
-  ports:
-    - port: 5000
-      targetPort: 5000
----
-# ConfigMap for repository URLs and build configuration
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: build-config
-data:
-  BACKEND_REPO_URL: "https://github.com/DiegoBarrosA/openflow-backend.git"
-  FRONTEND_REPO_URL: "https://github.com/DiegoBarrosA/openflow-frontend.git"
-  BACKEND_BRANCH: "main"
-  FRONTEND_BRANCH: "main"
-  REGISTRY_URL: "local-registry:5000"
----
-# Build backend image using Kaniko from Git repository
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: build-backend
-spec:
-  template:
-    spec:
-      initContainers:
-        - name: git-clone
-          image: docker.io/library/alpine/git:latest
-          command:
-            - sh
-            - -c
-            - |
-              git clone --branch ${BACKEND_BRANCH} --depth 1 ${BACKEND_REPO_URL} /workspace/backend
-              echo "Backend repository cloned successfully"
-          env:
-            - name: BACKEND_REPO_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: build-config
-                  key: BACKEND_REPO_URL
-            - name: BACKEND_BRANCH
-              valueFrom:
-                configMapKeyRef:
-                  name: build-config
-                  key: BACKEND_BRANCH
-          volumeMounts:
-            - name: workspace
-              mountPath: /workspace
-      containers:
-        - name: kaniko
-          image: gcr.io/kaniko-project/executor:latest
-          args:
-            - --dockerfile=Dockerfile
-            - --context=dir:///workspace/backend
-            - --destination=local-registry:5000/openflow-backend:latest
-            - --insecure
-            - --skip-tls-verify
-          volumeMounts:
-            - name: workspace
-              mountPath: /workspace
-      volumes:
-        - name: workspace
-          emptyDir: {}
-      restartPolicy: Never
-  backoffLimit: 3
----
-# Build frontend image using Kaniko from Git repository
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: build-frontend
-spec:
-  template:
-    spec:
-      initContainers:
-        - name: git-clone
-          image: docker.io/library/alpine/git:latest
-          command:
-            - sh
-            - -c
-            - |
-              git clone --branch ${FRONTEND_BRANCH} --depth 1 ${FRONTEND_REPO_URL} /workspace/frontend
-              echo "Frontend repository cloned successfully"
-          env:
-            - name: FRONTEND_REPO_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: build-config
-                  key: FRONTEND_REPO_URL
-            - name: FRONTEND_BRANCH
-              valueFrom:
-                configMapKeyRef:
-                  name: build-config
-                  key: FRONTEND_BRANCH
-          volumeMounts:
-            - name: workspace
-              mountPath: /workspace
-      containers:
-        - name: kaniko
-          image: gcr.io/kaniko-project/executor:latest
-          args:
-            - --dockerfile=Dockerfile
-            - --context=dir:///workspace/frontend
-            - --destination=local-registry:5000/openflow-frontend:latest
-            - --insecure
-            - --skip-tls-verify
-          volumeMounts:
-            - name: workspace
-              mountPath: /workspace
-      volumes:
-        - name: workspace
-          emptyDir: {}
-      restartPolicy: Never
-  backoffLimit: 3
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -164,13 +15,9 @@ spec:
       labels:
         app: openflow-backend
     spec:
-      initContainers:
-        - name: wait-for-build
-          image: docker.io/curlimages/curl:latest
-          command: ['sh', '-c', 'until curl -f http://local-registry:5000/v2/openflow-backend/manifests/latest 2>/dev/null; do echo "Waiting for backend build..."; sleep 5; done; echo "Backend build complete!"']
       containers:
         - name: backend
-          image: local-registry:5000/openflow-backend:latest
+          image: ghcr.io/diegobarrosa/openflow-backend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -189,6 +36,21 @@ spec:
               memory: "1Gi"
               cpu: "500m"
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openflow-backend
+  labels:
+    app: openflow-backend
+spec:
+  selector:
+    app: openflow-backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: NodePort
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -205,13 +67,9 @@ spec:
       labels:
         app: openflow-frontend
     spec:
-      initContainers:
-        - name: wait-for-build
-          image: docker.io/curlimages/curl:latest
-          command: ['sh', '-c', 'until curl -f http://local-registry:5000/v2/openflow-frontend/manifests/latest 2>/dev/null; do echo "Waiting for frontend build..."; sleep 5; done; echo "Frontend build complete!"']
       containers:
         - name: frontend
-          image: local-registry:5000/openflow-frontend:latest
+          image: ghcr.io/diegobarrosa/openflow-frontend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
@@ -229,21 +87,6 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: openflow-backend
-  labels:
-    app: openflow-backend
-spec:
-  selector:
-    app: openflow-backend
-  ports:
-    - name: http
-      port: 8080
-      targetPort: 8080
-  type: NodePort
----
-apiVersion: v1
-kind: Service
-metadata:
   name: openflow-frontend
   labels:
     app: openflow-frontend
@@ -255,4 +98,3 @@ spec:
       port: 3000
       targetPort: 3000
   type: NodePort
-
