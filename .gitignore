@@ -30,3 +30,7 @@ result/
 wallet/
 
 oracle-wallet-configmap.yaml
+.env
+**/*.env
+**/*.env.local
+*.env
