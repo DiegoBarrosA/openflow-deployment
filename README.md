@@ -12,11 +12,8 @@ Container orchestration and deployment configuration for the OpenFlow project ma
 ### Deploy Stack
 
 ```bash
-# Create network
-podman network create openflow-network
-
-# Deploy
-podman play kube --network openflow-network --publish 8080:8080 --publish 3000:3000 kube.yaml
+# Deploy using Kubernetes YAML (exposes services on host ports 8080 and 3000)
+podman play kube kube.yaml
 ```
 
 ## Documentation
@@ -44,6 +41,7 @@ Comprehensive documentation is available in the `/docs` directory:
 ## Integration
 
 This repository integrates:
+
 - [openflow-backend](https://github.com/DiegoBarrosA/openflow-backend)
 - [openflow-frontend](https://github.com/DiegoBarrosA/openflow-frontend)
 

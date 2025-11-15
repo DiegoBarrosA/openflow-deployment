@@ -21,6 +21,7 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+              hostPort: 8080
           env:
             - name: SPRING_DATASOURCE_URL
               value: "jdbc:h2:mem:openflowdb"
@@ -49,7 +50,7 @@ spec:
     - name: http
       port: 8080
       targetPort: 8080
-  type: NodePort
+  type: NodePort  # Exposes backend on a random high port on each node (see 'kubectl get svc')
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -69,10 +70,11 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/diegobarrosa/openflow-frontend:latest
-          imagePullPolicy: Always
+          image: openflow-frontend:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 3000
+              hostPort: 3000
           env:
             - name: VITE_API_BASE_URL
               value: "/api"
@@ -97,4 +99,4 @@ spec:
     - name: http
       port: 3000
       targetPort: 3000
-  type: NodePort
+  type: NodePort  # Exposes frontend on a random high port on each node (see 'kubectl get svc')
