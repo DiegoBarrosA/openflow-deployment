@@ -65,6 +65,27 @@ Add these secrets to your GitHub repository:
 - `ORACLE_WALLET_SQLNET`
 - `ORACLE_WALLET_TNSNAMES`
 - `ORACLE_WALLET_TRUSTSTORE`
+ 
+Also, to enable automatic deployment when backend/frontend images are built, add the following secrets:
+
+In the **deployment** repository (this repo):
+
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `ORACLE_DB_USERNAME`
+- `ORACLE_DB_PASSWORD`
+- `ORACLE_DB_URL`
+- `JWT_SECRET`
+- `ORACLE_WALLET_CWALLET`, `ORACLE_WALLET_EWALLET`, `ORACLE_WALLET_KEYSTORE`, `ORACLE_WALLET_OJDBC`, `ORACLE_WALLET_SQLNET`, `ORACLE_WALLET_TNSNAMES`, `ORACLE_WALLET_TRUSTSTORE`
+
+In the **backend** and **frontend** repositories (optional but recommended to auto-trigger deploy):
+
+- `DEPLOY_REPO_TOKEN` — a GitHub Personal Access Token (repo scope) used to trigger repository_dispatch on the deployment repo after a successful image push.
+
+Notes:
+
+- `GITHUB_TOKEN` is used to authenticate and push images to GHCR from each repo's workflow.
+- The `DEPLOY_REPO_TOKEN` allows the build workflows to notify the deployment repo to pull the new image and update EKS.
 
 ### 4. Deploy
 
@@ -80,7 +101,7 @@ The GitHub Actions workflow will automatically build and deploy to EKS.
 
 ## 📁 Project Structure
 
-```
+```text
 openflow/
 ├── openflow-backend/          # Spring Boot API
 │   ├── src/main/java/com/openflow/

@@ -25,3 +25,8 @@ Thumbs.db
 
 # Nix
 result/
+**/*.zip
+*/zip
+wallet/
+
+oracle-wallet-configmap.yaml
