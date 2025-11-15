@@ -4,15 +4,15 @@ on:
   repository_dispatch:
     types: [image_update]
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'kube.yaml'
+      - "kube.yaml"
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Deployment environment'
+        description: "Deployment environment"
         required: true
-        default: 'staging'
+        default: "staging"
         type: choice
         options:
           - staging
