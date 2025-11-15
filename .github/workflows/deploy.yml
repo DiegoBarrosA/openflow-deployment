@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
 
       - name: Deploy stack
         run: |
-          podman play kube --network openflow-network --publish 8080:8080 --publish 3000:3000 kube.yaml
+          podman play kube --network openflow-network --publish 8080:8080 --publish 3000:3000 kube-test.yaml
 
       - name: Wait for services
         run: |
@@ -55,7 +55,3 @@ jobs:
           podman pod stop openflow || true
           podman pod rm openflow || true
           podman network rm openflow-network || true
-
-
-
-
