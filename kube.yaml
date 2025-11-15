@@ -21,7 +21,6 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
-              hostPort: 8080
           env:
             - name: SPRING_DATASOURCE_URL
               value: "jdbc:h2:mem:openflowdb"
