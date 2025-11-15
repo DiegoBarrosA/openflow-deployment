@@ -2,18 +2,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: openflow-backend
+  name: openflow
   labels:
-    app: openflow-backend
+    app: openflow
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: openflow-backend
+      app: openflow
   template:
     metadata:
       labels:
-        app: openflow-backend
+        app: openflow
     spec:
       containers:
         - name: backend
@@ -36,39 +36,6 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "500m"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: openflow-backend
-  labels:
-    app: openflow-backend
-spec:
-  selector:
-    app: openflow-backend
-  ports:
-    - name: http
-      port: 8080
-      targetPort: 8080
-  type: NodePort  # Exposes backend on a random high port on each node (see 'kubectl get svc')
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: openflow-frontend
-  labels:
-    app: openflow-frontend
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: openflow-frontend
-  template:
-    metadata:
-      labels:
-        app: openflow-frontend
-    spec:
-      containers:
         - name: frontend
           image: openflow-frontend:latest
           imagePullPolicy: Never
@@ -89,14 +56,29 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: openflow-frontend
+  name: openflow-backend
   labels:
-    app: openflow-frontend
+    app: openflow
 spec:
   selector:
-    app: openflow-frontend
+    app: openflow
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: NodePort
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openflow-frontend
+  labels:
+    app: openflow
+spec:
+  selector:
+    app: openflow
   ports:
     - name: http
       port: 3000
       targetPort: 3000
-  type: NodePort  # Exposes frontend on a random high port on each node (see 'kubectl get svc')
+  type: NodePort
