@@ -1,0 +1,61 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+
+      - name: Build backend image
+        run: |
+          git clone https://github.com/DiegoBarrosA/openflow-backend.git ../openflow-backend
+          cd ../openflow-backend
+          podman build -t openflow-backend:latest .
+
+      - name: Build frontend image
+        run: |
+          git clone https://github.com/DiegoBarrosA/openflow-frontend.git ../openflow-frontend
+          cd ../openflow-frontend
+          podman build -t openflow-frontend:latest .
+
+      - name: Create network
+        run: |
+          podman network create openflow-network || true
+
+      - name: Deploy stack
+        run: |
+          podman play kube --network openflow-network --publish 8080:8080 --publish 3000:3000 kube.yaml
+
+      - name: Wait for services
+        run: |
+          sleep 60
+
+      - name: Test backend
+        run: |
+          curl -f http://localhost:8080/api/auth/login -X POST -H "Content-Type: application/json" -d '{"username":"admin","password":"admin123"}' || exit 1
+
+      - name: Test frontend
+        run: |
+          curl -f http://localhost:3000 || exit 1
+
+      - name: Cleanup
+        if: always()
+        run: |
+          podman pod stop openflow || true
+          podman pod rm openflow || true
+          podman network rm openflow-network || true
+
+
+
+

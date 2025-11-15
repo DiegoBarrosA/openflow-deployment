@@ -1,0 +1,182 @@
+name: Deploy to AWS EKS with Oracle ADB
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ${{ github.repository_owner }}/openflow-backend
+  FRONTEND_IMAGE: ${{ github.repository_owner }}/openflow-frontend
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: openflow-cluster
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      backend-image: ${{ steps.build-backend.outputs.image }}
+      frontend-image: ${{ steps.build-frontend.outputs.image }}
+    steps:
+    - name: Checkout deployment code
+      uses: actions/checkout@v4
+
+    - name: Checkout backend code
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.repository_owner }}/openflow-backend
+        path: openflow-backend
+
+    - name: Checkout frontend code
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.repository_owner }}/openflow-frontend
+        path: openflow-frontend
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Install Nix
+      uses: cachix/install-nix-action@v22
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+
+    - name: Setup Nix cache
+      uses: cachix/cachix-action@v12
+      with:
+        name: openflow
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+    - name: Build backend
+      id: build-backend
+      run: |
+        cd openflow-backend
+        nix develop --command mvn clean package -DskipTests
+        nix develop --command podman build -t ${{ env.REGISTRY }}/$BACKEND_IMAGE:$GITHUB_SHA .
+        nix develop --command podman push ${{ env.REGISTRY }}/$BACKEND_IMAGE:$GITHUB_SHA
+        echo "image=${{ env.REGISTRY }}/$BACKEND_IMAGE:$GITHUB_SHA" >> $GITHUB_OUTPUT
+
+    - name: Build frontend
+      id: build-frontend
+      run: |
+        cd openflow-frontend
+        nix develop --command npm run build
+        nix develop --command podman build -t ${{ env.REGISTRY }}/$FRONTEND_IMAGE:$GITHUB_SHA .
+        nix develop --command podman push ${{ env.REGISTRY }}/$FRONTEND_IMAGE:$GITHUB_SHA
+        echo "image=${{ env.REGISTRY }}/$FRONTEND_IMAGE:$GITHUB_SHA" >> $GITHUB_OUTPUT
+
+  deploy-to-eks:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Install kubectl
+      run: |
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+
+    - name: Install AWS CLI v2
+      run: |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        sudo ./aws/install
+
+    - name: Update kubeconfig
+      run: |
+        aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+
+    - name: Create Oracle Database Secret
+      run: |
+        kubectl create secret generic oracle-db-secret \
+          --from-literal=username='${{ secrets.ORACLE_DB_USERNAME }}' \
+          --from-literal=password='${{ secrets.ORACLE_DB_PASSWORD }}' \
+          --from-literal=db-url='${{ secrets.ORACLE_DB_URL }}' \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Create Application Secrets
+      run: |
+        kubectl create secret generic app-secrets \
+          --from-literal=jwt-secret='${{ secrets.JWT_SECRET }}' \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Create Oracle Wallet Secret
+      run: |
+        # Create temporary directory for wallet files
+        mkdir -p wallet-temp
+
+        # Decode and save wallet files from secrets
+        echo '${{ secrets.ORACLE_WALLET_CWALLET }}' | base64 -d > wallet-temp/cwallet.sso
+        echo '${{ secrets.ORACLE_WALLET_EWALLET }}' | base64 -d > wallet-temp/ewallet.p12
+        echo '${{ secrets.ORACLE_WALLET_KEYSTORE }}' | base64 -d > wallet-temp/keystore.jks
+        echo '${{ secrets.ORACLE_WALLET_OJDBC }}' | base64 -d > wallet-temp/ojdbc.properties
+        echo '${{ secrets.ORACLE_WALLET_SQLNET }}' | base64 -d > wallet-temp/sqlnet.ora
+        echo '${{ secrets.ORACLE_WALLET_TNSNAMES }}' | base64 -d > wallet-temp/tnsnames.ora
+        echo '${{ secrets.ORACLE_WALLET_TRUSTSTORE }}' | base64 -d > wallet-temp/truststore.jks
+
+        # Create the secret
+        kubectl create secret generic oracle-wallet-secret \
+          --from-file=cwallet.sso=wallet-temp/cwallet.sso \
+          --from-file=ewallet.p12=wallet-temp/ewallet.p12 \
+          --from-file=keystore.jks=wallet-temp/keystore.jks \
+          --from-file=ojdbc.properties=wallet-temp/ojdbc.properties \
+          --from-file=sqlnet.ora=wallet-temp/sqlnet.ora \
+          --from-file=tnsnames.ora=wallet-temp/tnsnames.ora \
+          --from-file=truststore.jks=wallet-temp/truststore.jks \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+        # Clean up
+        rm -rf wallet-temp
+
+    - name: Create GHCR Image Pull Secret
+      run: |
+        # Create image pull secret for GHCR access
+        kubectl create secret docker-registry ghcr-secret \
+          --docker-server=ghcr.io \
+          --docker-username=${{ github.actor }} \
+          --docker-password=${{ secrets.GITHUB_TOKEN }} \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Update deployment images
+      run: |
+        # Update backend image
+        kubectl set image deployment/openflow-backend openflow-backend=${{ needs.build-and-push.outputs.backend-image }}
+
+        # Update frontend image
+        kubectl set image deployment/openflow-frontend frontend=${{ needs.build-and-push.outputs.frontend-image }}
+
+    - name: Deploy to EKS
+      run: |
+        kubectl apply -f kube.yaml
+
+    - name: Wait for rollout
+      run: |
+        kubectl rollout status deployment/openflow-backend --timeout=600s
+        kubectl rollout status deployment/openflow-frontend --timeout=600s
+
+    - name: Get service URLs
+      run: |
+        echo "Backend URL: http://$(kubectl get svc openflow-backend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'):8080"
+        echo "Frontend URL: http://$(kubectl get svc openflow-frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"        echo "API Base URL: http://$(kubectl get svc openflow-backend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'):8080/api"

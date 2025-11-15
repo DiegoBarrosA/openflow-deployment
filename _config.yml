@@ -1,0 +1,32 @@
+title: OpenFlow Deployment Documentation
+description: Container orchestration and deployment for OpenFlow application
+theme: jekyll-theme-minimal
+plugins:
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: true
+
+theme_assets:
+  stylesheets:
+    - https://diegobarrosa.github.io/diegobarrosaraya-assets/shared-theme.css
+    - https://diegobarrosa.github.io/diegobarrosaraya-assets/shared-footer.css
+  scripts:
+    - https://diegobarrosa.github.io/diegobarrosaraya-assets/shared-theme.js
+
+markdown: kramdown
+kramdown:
+  syntax_highlighter: rouge
+  input: GFM
+  hard_wrap: false
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - .git
+  - .gitignore
+
+
+
+

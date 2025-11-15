@@ -1,43 +1,27 @@
-# IDE
-.idea/
+# Wallet files (Oracle ADB)
+wallet/
+*.sso
+*.p12
+*.jks
+
+# Environment files
+.env
+.env.local
+
+# Build artifacts
+target/
+node_modules/
+dist/
+
+# IDE files
 .vscode/
+.idea/
 *.swp
 *.swo
-*~
 
-# OS
+# OS files
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Secrets (never commit)
-secrets/
-*.key
-*.pem
-*.crt
-
-# Input/Output files
-*.csv
-*.xlsx
-*.xls
-*.json
-*.xml
-*.yaml
-*.yml
-!kube.yaml
-!**/docs/**/*.yaml
-!**/docs/**/*.yml
-
-# Deployment artifacts
-deployments/
-manifests/
-
-
-
+# Nix
+result/

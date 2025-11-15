@@ -2,33 +2,54 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: openflow
+  name: openflow-backend
   labels:
-    app: openflow
+    app: openflow-backend
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: openflow
+      app: openflow-backend
   template:
     metadata:
       labels:
-        app: openflow
+        app: openflow-backend
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: backend
           image: ghcr.io/diegobarrosa/openflow-backend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
-              hostPort: 8080
           env:
-            - name: SPRING_DATASOURCE_URL
-              value: "jdbc:h2:mem:openflowdb"
+            - name: ORACLE_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: oracle-db-secret
+                  key: db-url
+            - name: ORACLE_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: oracle-db-secret
+                  key: username
+            - name: ORACLE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: oracle-db-secret
+                  key: password
             - name: JWT_SECRET
-              value: "openflow-secret-key-change-in-production"
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: jwt-secret
             - name: CORS_ALLOWED_ORIGINS
               value: "http://localhost:3000"
+          volumeMounts:
+            - name: oracle-wallet
+              mountPath: /app/wallet
+              readOnly: true
           resources:
             requests:
               memory: "512Mi"
@@ -36,12 +57,35 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "500m"
+      volumes:
+        - name: oracle-wallet
+          secret:
+            secretName: oracle-wallet-secret
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openflow-frontend
+  labels:
+    app: openflow-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openflow-frontend
+  template:
+    metadata:
+      labels:
+        app: openflow-frontend
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
         - name: frontend
-          image: openflow-frontend:latest
-          imagePullPolicy: Never
+          image: ghcr.io/diegobarrosa/openflow-frontend:latest
+          imagePullPolicy: Always
           ports:
-            - containerPort: 3000
-              hostPort: 3000
+            - containerPort: 80
           env:
             - name: VITE_API_BASE_URL
               value: "/api"
@@ -58,27 +102,27 @@ kind: Service
 metadata:
   name: openflow-backend
   labels:
-    app: openflow
+    app: openflow-backend
 spec:
   selector:
-    app: openflow
+    app: openflow-backend
   ports:
     - name: http
       port: 8080
       targetPort: 8080
-  type: NodePort
+  type: LoadBalancer
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: openflow-frontend
   labels:
-    app: openflow
+    app: openflow-frontend
 spec:
   selector:
-    app: openflow
+    app: openflow-frontend
   ports:
     - name: http
-      port: 3000
-      targetPort: 3000
-  type: NodePort
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
