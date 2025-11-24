@@ -30,6 +30,18 @@ jobs:
           cd ../openflow-frontend
           podman build -t openflow-frontend:latest .
 
+      - name: Pre-cleanup
+        run: |
+          # Stop and remove all pods/containers
+          podman pod ls -q | xargs -r podman pod stop || true
+          podman pod ls -q | xargs -r podman pod rm || true
+          podman container ls -aq | xargs -r podman container rm -f || true
+          # Remove network
+          podman network rm openflow-network || true
+          # Kill any processes on ports 3000 and 8080
+          sudo fuser -k 3000/tcp || true
+          sudo fuser -k 8080/tcp || true
+
       - name: Create network
         run: |
           podman network create openflow-network || true
@@ -42,6 +54,11 @@ jobs:
         run: |
           sleep 60
 
+      - name: Check pods
+        run: |
+          podman pod ps
+          podman container ls
+
       - name: Test backend
         run: |
           curl -f http://localhost:8080/api/auth/login -X POST -H "Content-Type: application/json" -d '{"username":"admin","password":"admin123"}' || exit 1
@@ -53,6 +70,9 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          podman pod stop openflow || true
-          podman pod rm openflow || true
-          podman network rm openflow-network || true
+          # Stop and remove all pods/containers
+          podman pod ls -q | xargs -r podman pod stop || true
+          podman pod ls -q | xargs -r podman pod rm || true
+          podman container ls -aq | xargs -r podman container rm -f || true
+          # Force remove network
+          podman network rm -f openflow-network || true
