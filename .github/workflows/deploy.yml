@@ -17,17 +17,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y podman
 
-      - name: Build backend image
+      - name: Authenticate to GitHub Container Registry
         run: |
-          git clone https://github.com/DiegoBarrosA/openflow-backend.git ../openflow-backend
-          cd ../openflow-backend
-          podman build -t openflow-backend:latest .
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Build frontend image
+      - name: Pull backend image from ghcr.io
         run: |
-          git clone https://github.com/DiegoBarrosA/openflow-frontend.git ../openflow-frontend
-          cd ../openflow-frontend
-          podman build -t openflow-frontend:latest .
+          podman pull ghcr.io/${{ github.repository_owner }}/openflow-backend:latest
+          podman tag ghcr.io/${{ github.repository_owner }}/openflow-backend:latest openflow-backend:latest
+
+      - name: Pull frontend image from ghcr.io
+        run: |
+          podman pull ghcr.io/${{ github.repository_owner }}/openflow-frontend:latest
+          podman tag ghcr.io/${{ github.repository_owner }}/openflow-frontend:latest openflow-frontend:latest
 
       - name: Pre-cleanup
         run: |
