@@ -7,7 +7,6 @@ on:
 
 jobs:
   integration-test:
-    if: false # Disabled to focus on EKS deployment
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
