@@ -23,13 +23,15 @@ jobs:
 
       - name: Pull backend image from ghcr.io
         run: |
-          podman pull ghcr.io/${{ github.repository_owner }}/openflow-backend:latest
-          podman tag ghcr.io/${{ github.repository_owner }}/openflow-backend:latest openflow-backend:latest
+          REPO_OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          podman pull ghcr.io/${REPO_OWNER_LC}/openflow-backend:latest
+          podman tag ghcr.io/${REPO_OWNER_LC}/openflow-backend:latest openflow-backend:latest
 
       - name: Pull frontend image from ghcr.io
         run: |
-          podman pull ghcr.io/${{ github.repository_owner }}/openflow-frontend:latest
-          podman tag ghcr.io/${{ github.repository_owner }}/openflow-frontend:latest openflow-frontend:latest
+          REPO_OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          podman pull ghcr.io/${REPO_OWNER_LC}/openflow-frontend:latest
+          podman tag ghcr.io/${REPO_OWNER_LC}/openflow-frontend:latest openflow-frontend:latest
 
       - name: Pre-cleanup
         run: |
