@@ -103,6 +103,8 @@ metadata:
   name: openflow-backend
   labels:
     app: openflow-backend
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
 spec:
   selector:
     app: openflow-backend
@@ -118,11 +120,13 @@ metadata:
   name: openflow-frontend
   labels:
     app: openflow-frontend
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
 spec:
   selector:
     app: openflow-frontend
   ports:
     - name: http
       port: 80
-      targetPort: 80
+      targetPort: 3000
   type: LoadBalancer
