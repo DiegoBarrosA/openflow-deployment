@@ -31,7 +31,21 @@ This creates a free-tier EKS cluster with 1 t3.micro node.
 
 1. Create an Oracle Autonomous Database instance in Oracle Cloud
 2. Download the wallet files from the Oracle Cloud Console
-3. Encode wallet files for GitHub Secrets (see [GitHub Secrets Setup Guide](docs/github-secrets-setup.md))
+3. Extract wallet ZIP file to `wallet/` directory:
+   ```bash
+   unzip Wallet_yourdb.zip -d wallet/
+   ```
+4. Upload wallet files to GitHub Secrets:
+   ```bash
+   ./upload-wallet-to-github.sh
+   ```
+   This automatically encodes and uploads wallet files to GitHub Secrets in the deployment repository.
+   
+   **Alternative:** If you prefer manual setup:
+   ```bash
+   ./encode-wallet-for-github.sh
+   # Then manually copy values to GitHub Secrets
+   ```
 
 ### 3. Configure GitHub Secrets
 

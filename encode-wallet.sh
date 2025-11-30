@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Oracle Wallet Encoder for GitHub Secrets
-# This script encodes Oracle wallet files for GitHub Secrets
+# 
+# ⚠️  DEPRECATED: Use encode-wallet-for-github.sh instead
+# This script is kept for backward compatibility but may not include all required files.
 #
 # ⚠️  SECURITY WARNING:
 # - This script creates a file containing base64-encoded secrets
@@ -11,6 +13,16 @@
 # - Add wallet/ and wallet-secrets.env to .gitignore
 
 set -e
+
+echo "⚠️  WARNING: This script is deprecated!"
+echo "   Please use: ./encode-wallet-for-github.sh"
+echo "   (This script may not include all required wallet files)"
+echo ""
+read -p "Continue anyway? (y/N) " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+fi
 
 WALLET_DIR="./wallet"
 OUTPUT_FILE="wallet-secrets.env"

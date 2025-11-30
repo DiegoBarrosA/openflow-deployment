@@ -3,6 +3,9 @@ wallet/
 *.sso
 *.p12
 *.jks
+wallet-secrets*.env
+wallet-secrets*.txt
+wallet-secrets-github.txt
 
 # Environment files
 .env
