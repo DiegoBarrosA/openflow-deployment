@@ -601,6 +601,16 @@ jobs:
           decode_file wallet-temp/tnsnames.b64 wallet-temp/tnsnames.ora "tnsnames.ora" || exit 1
           decode_file wallet-temp/truststore.b64 wallet-temp/truststore.jks "truststore.jks" || exit 1
           
+          # Fix sqlnet.ora to use explicit wallet directory path instead of placeholder
+          echo "Updating sqlnet.ora with explicit wallet directory..."
+          if [ -f wallet-temp/sqlnet.ora ]; then
+            # Replace ?/network/admin with /app/wallet in sqlnet.ora
+            sed -i 's|DIRECTORY="?/network/admin"|DIRECTORY="/app/wallet"|g' wallet-temp/sqlnet.ora
+            sed -i "s|DIRECTORY='?/network/admin'|DIRECTORY='/app/wallet'|g" wallet-temp/sqlnet.ora
+            sed -i 's|DIRECTORY=?/network/admin|DIRECTORY=/app/wallet|g' wallet-temp/sqlnet.ora
+            echo "✅ Updated sqlnet.ora wallet directory to /app/wallet"
+          fi
+          
           echo ""
           echo "Verifying decoded wallet files..."
           

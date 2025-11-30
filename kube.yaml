@@ -49,6 +49,9 @@ spec:
               value: "*"
             - name: TNS_ADMIN
               value: /app/wallet
+            # Java system properties for Oracle wallet
+            - name: JAVA_OPTS
+              value: "-Doracle.net.wallet_location=(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY=/app/wallet)))"
           volumeMounts:
             - name: oracle-wallet
               mountPath: /app/wallet
