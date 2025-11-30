@@ -1,4 +1,0 @@
-### REMOVED: Local deployment manifest (kube-test.yaml)
-
-This file has been replaced by `kube.yaml` which contains the manifests used for EKS deployment.
-If you still need a local test manifest, please re-add it under a different name or use `kube.yaml` with overrides.
