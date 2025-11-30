@@ -1,36 +1,10 @@
-name: Deploy
+name: Deploy (disabled - local deployment)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
-  deploy-local:
-    name: Deploy (disabled - local deployment)
-
-    on:
-      workflow_dispatch:
-
-    jobs:
-      disabled:
-        runs-on: ubuntu-latest
-        if: false
-        steps: []
-      - name: Test backend
-        run: |
-          curl -f http://localhost:8080/api/auth/login -X POST -H "Content-Type: application/json" -d '{"username":"admin","password":"admin123"}' || exit 1
-
-      - name: Test frontend
-        run: |
-          curl -f http://localhost:3000 || exit 1
-
-      - name: Cleanup
-        if: always()
-        run: |
-          # Stop and remove all pods/containers
-          podman pod ls -q | xargs -r podman pod stop || true
-          podman pod ls -q | xargs -r podman pod rm || true
-          podman container ls -aq | xargs -r podman container rm -f || true
-          # Force remove network
-          podman network rm -f openflow-network || true
+  disabled:
+    runs-on: ubuntu-latest
+    if: false
+    steps: []
