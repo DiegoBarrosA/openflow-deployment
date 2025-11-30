@@ -169,6 +169,18 @@ jobs:
           set -e
           echo "Validating wallet secrets format (base64 character set)..."
           echo ""
+          echo "Note: Secret values are masked in logs for security"
+          echo ""
+          
+          # Capture secrets into variables first (without quotes around the substitution)
+          # This ensures we get the actual value, not a quoted string
+          ORACLE_WALLET_CWALLET_VAL="${{ secrets.ORACLE_WALLET_CWALLET }}"
+          ORACLE_WALLET_EWALLET_VAL="${{ secrets.ORACLE_WALLET_EWALLET }}"
+          ORACLE_WALLET_KEYSTORE_VAL="${{ secrets.ORACLE_WALLET_KEYSTORE }}"
+          ORACLE_WALLET_OJDBC_VAL="${{ secrets.ORACLE_WALLET_OJDBC }}"
+          ORACLE_WALLET_SQLNET_VAL="${{ secrets.ORACLE_WALLET_SQLNET }}"
+          ORACLE_WALLET_TNSNAMES_VAL="${{ secrets.ORACLE_WALLET_TNSNAMES }}"
+          ORACLE_WALLET_TRUSTSTORE_VAL="${{ secrets.ORACLE_WALLET_TRUSTSTORE }}"
           
           # Helper function to validate base64 format
           validate_base64() {
@@ -225,13 +237,13 @@ jobs:
           
           VALIDATION_OK=1
           
-          validate_base64 '${{ secrets.ORACLE_WALLET_CWALLET }}' "ORACLE_WALLET_CWALLET" || VALIDATION_OK=0
-          validate_base64 '${{ secrets.ORACLE_WALLET_EWALLET }}' "ORACLE_WALLET_EWALLET" || VALIDATION_OK=0
-          validate_base64 '${{ secrets.ORACLE_WALLET_KEYSTORE }}' "ORACLE_WALLET_KEYSTORE" || VALIDATION_OK=0
-          validate_base64 '${{ secrets.ORACLE_WALLET_OJDBC }}' "ORACLE_WALLET_OJDBC" || VALIDATION_OK=0
-          validate_base64 '${{ secrets.ORACLE_WALLET_SQLNET }}' "ORACLE_WALLET_SQLNET" || VALIDATION_OK=0
-          validate_base64 '${{ secrets.ORACLE_WALLET_TNSNAMES }}' "ORACLE_WALLET_TNSNAMES" || VALIDATION_OK=0
-          validate_base64 '${{ secrets.ORACLE_WALLET_TRUSTSTORE }}' "ORACLE_WALLET_TRUSTSTORE" || VALIDATION_OK=0
+          validate_base64 "$ORACLE_WALLET_CWALLET_VAL" "ORACLE_WALLET_CWALLET" || VALIDATION_OK=0
+          validate_base64 "$ORACLE_WALLET_EWALLET_VAL" "ORACLE_WALLET_EWALLET" || VALIDATION_OK=0
+          validate_base64 "$ORACLE_WALLET_KEYSTORE_VAL" "ORACLE_WALLET_KEYSTORE" || VALIDATION_OK=0
+          validate_base64 "$ORACLE_WALLET_OJDBC_VAL" "ORACLE_WALLET_OJDBC" || VALIDATION_OK=0
+          validate_base64 "$ORACLE_WALLET_SQLNET_VAL" "ORACLE_WALLET_SQLNET" || VALIDATION_OK=0
+          validate_base64 "$ORACLE_WALLET_TNSNAMES_VAL" "ORACLE_WALLET_TNSNAMES" || VALIDATION_OK=0
+          validate_base64 "$ORACLE_WALLET_TRUSTSTORE_VAL" "ORACLE_WALLET_TRUSTSTORE" || VALIDATION_OK=0
           
           echo ""
           
@@ -303,14 +315,23 @@ jobs:
             return 0
           }
           
+          # Capture secrets into variables (without quotes around substitution)
+          ORACLE_WALLET_CWALLET_VAL="${{ secrets.ORACLE_WALLET_CWALLET }}"
+          ORACLE_WALLET_EWALLET_VAL="${{ secrets.ORACLE_WALLET_EWALLET }}"
+          ORACLE_WALLET_KEYSTORE_VAL="${{ secrets.ORACLE_WALLET_KEYSTORE }}"
+          ORACLE_WALLET_OJDBC_VAL="${{ secrets.ORACLE_WALLET_OJDBC }}"
+          ORACLE_WALLET_SQLNET_VAL="${{ secrets.ORACLE_WALLET_SQLNET }}"
+          ORACLE_WALLET_TNSNAMES_VAL="${{ secrets.ORACLE_WALLET_TNSNAMES }}"
+          ORACLE_WALLET_TRUSTSTORE_VAL="${{ secrets.ORACLE_WALLET_TRUSTSTORE }}"
+          
           # Decode each wallet file
-          decode_file '${{ secrets.ORACLE_WALLET_CWALLET }}' wallet-temp/cwallet.sso "cwallet.sso" || exit 1
-          decode_file '${{ secrets.ORACLE_WALLET_EWALLET }}' wallet-temp/ewallet.p12 "ewallet.p12" || exit 1
-          decode_file '${{ secrets.ORACLE_WALLET_KEYSTORE }}' wallet-temp/keystore.jks "keystore.jks" || exit 1
-          decode_file '${{ secrets.ORACLE_WALLET_OJDBC }}' wallet-temp/ojdbc.properties "ojdbc.properties" || exit 1
-          decode_file '${{ secrets.ORACLE_WALLET_SQLNET }}' wallet-temp/sqlnet.ora "sqlnet.ora" || exit 1
-          decode_file '${{ secrets.ORACLE_WALLET_TNSNAMES }}' wallet-temp/tnsnames.ora "tnsnames.ora" || exit 1
-          decode_file '${{ secrets.ORACLE_WALLET_TRUSTSTORE }}' wallet-temp/truststore.jks "truststore.jks" || exit 1
+          decode_file "$ORACLE_WALLET_CWALLET_VAL" wallet-temp/cwallet.sso "cwallet.sso" || exit 1
+          decode_file "$ORACLE_WALLET_EWALLET_VAL" wallet-temp/ewallet.p12 "ewallet.p12" || exit 1
+          decode_file "$ORACLE_WALLET_KEYSTORE_VAL" wallet-temp/keystore.jks "keystore.jks" || exit 1
+          decode_file "$ORACLE_WALLET_OJDBC_VAL" wallet-temp/ojdbc.properties "ojdbc.properties" || exit 1
+          decode_file "$ORACLE_WALLET_SQLNET_VAL" wallet-temp/sqlnet.ora "sqlnet.ora" || exit 1
+          decode_file "$ORACLE_WALLET_TNSNAMES_VAL" wallet-temp/tnsnames.ora "tnsnames.ora" || exit 1
+          decode_file "$ORACLE_WALLET_TRUSTSTORE_VAL" wallet-temp/truststore.jks "truststore.jks" || exit 1
           
           echo ""
 
