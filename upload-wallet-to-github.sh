@@ -180,6 +180,7 @@ upload_with_gh_cli() {
     
     if command -v base64 >/dev/null 2>&1; then
         # Encode to base64 (no line breaks) - this is what the workflow expects
+        # Try GNU base64 first (supports -w 0), fallback to BSD base64
         encoded=$(base64 -w 0 "$file_path" 2>/dev/null || base64 "$file_path" | tr -d '\n')
         
         if [ -z "$encoded" ]; then
@@ -187,8 +188,21 @@ upload_with_gh_cli() {
             return 1
         fi
         
+        # Verify the encoded value is valid base64 (should only contain A-Z, a-z, 0-9, +, /, =)
+        if ! echo "$encoded" | grep -qE '^[A-Za-z0-9+/]*={0,2}$'; then
+            echo -e "${RED}❌ Encoded value contains invalid base64 characters${NC}"
+            return 1
+        fi
+        
+        # Verify we can decode it back (sanity check)
+        if ! echo -n "$encoded" | base64 -d >/dev/null 2>&1; then
+            echo -e "${RED}❌ Encoded value cannot be decoded (encoding failed)${NC}"
+            return 1
+        fi
+        
         # Upload using gh CLI - pass base64 encoded value via stdin
         # GitHub CLI encrypts the value before sending to GitHub
+        # Use -n flag to avoid adding newline
         if echo -n "$encoded" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - >/dev/null 2>&1; then
             echo -e "${GREEN}✅${NC}"
             
@@ -233,7 +247,19 @@ upload_with_api() {
     
     # Encode file to base64
     if command -v base64 >/dev/null 2>&1; then
+        # Try GNU base64 first (supports -w 0), fallback to BSD base64
         encoded=$(base64 -w 0 "$file_path" 2>/dev/null || base64 "$file_path" | tr -d '\n')
+        
+        if [ -z "$encoded" ]; then
+            echo -e "${RED}❌ Failed to encode file${NC}"
+            return 1
+        fi
+        
+        # Verify the encoded value is valid base64
+        if ! echo "$encoded" | grep -qE '^[A-Za-z0-9+/]*={0,2}$'; then
+            echo -e "${RED}❌ Encoded value contains invalid base64 characters${NC}"
+            return 1
+        fi
     else
         echo -e "${RED}❌ base64 not found${NC}"
         return 1

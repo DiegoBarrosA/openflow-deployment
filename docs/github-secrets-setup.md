@@ -183,12 +183,62 @@ Ensure all secrets use **exact** names as listed above. The workflow is case-sen
 
 ### Wallet Encoding Issues
 
-**Error**: `base64: invalid input`
+#### Error: `base64: invalid input` or `Failed to decode cwallet.sso`
+
+**Symptoms**:
+- Workflow fails at "Create Oracle Wallet Secret" step
+- Error message: "Failed to decode [filename]"
+- Error message: "This usually means the secret is not valid base64"
+
+**Root Causes**:
+1. Secrets contain newlines or whitespace that break base64 decoding
+2. Secrets were not properly base64 encoded during upload
+3. Secrets are empty or corrupted
+4. Encoding used wrong base64 flags (added line breaks)
 
 **Solution**:
-1. Ensure wallet files are not corrupted
-2. Re-download wallet from Oracle Cloud Console
-3. Verify file encoding (should be binary for .sso, .jks, .p12 files)
+
+1. **Re-upload wallet secrets** (recommended):
+   ```bash
+   cd openflow-deployment
+   ./upload-wallet-to-github.sh
+   ```
+   This script ensures proper encoding and validation.
+
+2. **Verify secrets exist and are non-empty**:
+   ```bash
+   ./verify-wallet-secrets.sh
+   ```
+
+3. **Check workflow logs** for detailed error messages:
+   - The "Validate Wallet Secrets Format" step shows format issues
+   - The "Create Oracle Wallet Secret" step shows decode errors with diagnostic info
+
+4. **Manual encoding** (if scripts don't work):
+   ```bash
+   # For GNU base64 (Linux)
+   base64 -w 0 wallet/cwallet.sso
+   
+   # For BSD base64 (macOS)
+   base64 wallet/cwallet.sso | tr -d '\n'
+   ```
+   Copy the output (single line, no newlines) to the GitHub Secret.
+
+5. **Verify encoding requirements**:
+   - Base64 string must contain only: A-Z, a-z, 0-9, +, /, =
+   - No newlines or whitespace
+   - Padding with `=` at the end is allowed (0-2 characters)
+
+6. **Common mistakes to avoid**:
+   - ❌ Copying base64 with line breaks
+   - ❌ Adding extra spaces or newlines
+   - ❌ Using wrong base64 variant (must be standard base64, not URL-safe)
+   - ❌ Encoding already-encoded values (double encoding)
+
+**Prevention**:
+- Always use `./upload-wallet-to-github.sh` or `./encode-wallet-for-github.sh`
+- These scripts validate encoding before upload
+- The workflow now includes validation steps that catch issues early
 
 ### Database Connection Failure
 
@@ -202,13 +252,24 @@ Ensure all secrets use **exact** names as listed above. The workflow is case-sen
 
 ### Manual Wallet Encoding
 
-If the script doesn't work, encode manually:
+If the scripts don't work, encode manually:
 
 ```bash
-# For each wallet file
+# For GNU base64 (Linux) - no line wrapping
 base64 -w 0 wallet/cwallet.sso
-# Copy the output to ORACLE_WALLET_CWALLET secret
+
+# For BSD base64 (macOS) - remove newlines
+base64 wallet/cwallet.sso | tr -d '\n'
+
+# Verify the encoding is valid (should decode successfully)
+echo "YOUR_BASE64_STRING" | base64 -d > /tmp/test.bin && echo "✅ Valid base64"
 ```
+
+**Important**: 
+- Copy the entire output (single line, no newlines)
+- Paste directly into GitHub Secret value field
+- Do not add any spaces or line breaks
+- The encoded value should be a long string of characters
 
 ### Finding Service Name
 

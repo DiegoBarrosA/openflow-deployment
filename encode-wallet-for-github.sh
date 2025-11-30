@@ -76,7 +76,25 @@ for file in "${!WALLET_FILES[@]}"; do
         # Encode to base64 (no line breaks)
         if command -v base64 >/dev/null 2>&1; then
             # Try with -w 0 (no wrap) first (GNU base64)
+            # Fallback to BSD base64 and remove newlines
             encoded=$(base64 -w 0 "$WALLET_DIR/$file" 2>/dev/null || base64 "$WALLET_DIR/$file" | tr -d '\n')
+            
+            if [ -z "$encoded" ]; then
+                echo -e "${RED}❌ Failed to encode $file${NC}"
+                exit 1
+            fi
+            
+            # Verify the encoded value is valid base64
+            if ! echo "$encoded" | grep -qE '^[A-Za-z0-9+/]*={0,2}$'; then
+                echo -e "${RED}❌ Encoded $file contains invalid base64 characters${NC}"
+                exit 1
+            fi
+            
+            # Verify we can decode it back (sanity check)
+            if ! echo -n "$encoded" | base64 -d >/dev/null 2>&1; then
+                echo -e "${RED}❌ Encoded $file cannot be decoded (encoding failed)${NC}"
+                exit 1
+            fi
         else
             echo -e "${RED}❌ base64 command not found!${NC}"
             exit 1

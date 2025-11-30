@@ -162,7 +162,71 @@ jobs:
           fi
           
           echo ""
-          echo "✅ All wallet secrets are set (checking if they're valid base64...)"
+          echo "✅ All wallet secrets are set"
+
+      - name: Validate Wallet Secrets Format
+        run: |
+          set -e
+          echo "Validating wallet secrets format (base64 character set)..."
+          echo ""
+          
+          # Helper function to validate base64 format
+          validate_base64() {
+            local secret_value="$1"
+            local secret_name="$2"
+            
+            # Strip whitespace and newlines for validation
+            local cleaned=$(echo -n "$secret_value" | tr -d '\n\r\t ')
+            
+            # Check if secret is empty
+            if [ -z "$cleaned" ]; then
+              echo "❌ $secret_name is empty"
+              return 1
+            fi
+            
+            # Check base64 character set (A-Z, a-z, 0-9, +, /, =)
+            # Allow padding with = at the end
+            if ! echo "$cleaned" | grep -qE '^[A-Za-z0-9+/]*={0,2}$'; then
+              echo "❌ $secret_name contains invalid base64 characters"
+              echo "   Length: ${#cleaned} characters"
+              # Show first 30 chars (masked by GitHub, but helps with debugging)
+              echo "   First chars: ${cleaned:0:30}..."
+              return 1
+            fi
+            
+            # Check length is reasonable (base64 encoded files should be substantial)
+            if [ ${#cleaned} -lt 10 ]; then
+              echo "⚠️  $secret_name is suspiciously short (${#cleaned} chars)"
+              echo "   This might indicate an encoding issue"
+            fi
+            
+            echo "✅ $secret_name format is valid (${#cleaned} characters)"
+            return 0
+          }
+          
+          VALIDATION_OK=1
+          
+          validate_base64 '${{ secrets.ORACLE_WALLET_CWALLET }}' "ORACLE_WALLET_CWALLET" || VALIDATION_OK=0
+          validate_base64 '${{ secrets.ORACLE_WALLET_EWALLET }}' "ORACLE_WALLET_EWALLET" || VALIDATION_OK=0
+          validate_base64 '${{ secrets.ORACLE_WALLET_KEYSTORE }}' "ORACLE_WALLET_KEYSTORE" || VALIDATION_OK=0
+          validate_base64 '${{ secrets.ORACLE_WALLET_OJDBC }}' "ORACLE_WALLET_OJDBC" || VALIDATION_OK=0
+          validate_base64 '${{ secrets.ORACLE_WALLET_SQLNET }}' "ORACLE_WALLET_SQLNET" || VALIDATION_OK=0
+          validate_base64 '${{ secrets.ORACLE_WALLET_TNSNAMES }}' "ORACLE_WALLET_TNSNAMES" || VALIDATION_OK=0
+          validate_base64 '${{ secrets.ORACLE_WALLET_TRUSTSTORE }}' "ORACLE_WALLET_TRUSTSTORE" || VALIDATION_OK=0
+          
+          echo ""
+          
+          if [ $VALIDATION_OK -eq 0 ]; then
+            echo "❌ Some wallet secrets have invalid format"
+            echo ""
+            echo "To fix this:"
+            echo "1. Re-upload wallet secrets using: ./upload-wallet-to-github.sh"
+            echo "2. Ensure wallet files are valid before encoding"
+            echo "3. Check that encoding script uses: base64 -w 0 (GNU) or base64 | tr -d '\\n' (BSD)"
+            exit 1
+          fi
+          
+          echo "✅ All wallet secrets have valid base64 format"
 
       - name: Create Oracle Wallet Secret (from GH secrets)
         run: |
@@ -178,16 +242,32 @@ jobs:
             local output_file="$2"
             local file_name="$3"
             
-            # Check if secret is empty
-            if [ -z "$secret_value" ] || [ "$secret_value" = "" ]; then
+            # Strip whitespace and newlines from secret value
+            # GitHub Secrets might have trailing newlines or spaces
+            secret_value=$(echo -n "$secret_value" | tr -d '\n\r\t ')
+            
+            # Check if secret is empty after cleaning
+            if [ -z "$secret_value" ]; then
               echo "❌ Error: $file_name secret is empty"
               return 1
             fi
             
+            # Validate base64 character set (basic check)
+            if ! echo "$secret_value" | grep -qE '^[A-Za-z0-9+/]*={0,2}$'; then
+              echo "❌ Error: $file_name contains invalid base64 characters"
+              echo "   Secret length: ${#secret_value} characters"
+              echo "   First 20 chars: ${secret_value:0:20}..."
+              echo "   Re-upload using: ./upload-wallet-to-github.sh"
+              return 1
+            fi
+            
             # Try to decode - suppress stderr but capture exit code
-            if ! echo "$secret_value" | base64 -d > "$output_file" 2>/dev/null; then
+            # Use -n flag with echo to avoid adding newline
+            if ! echo -n "$secret_value" | base64 -d > "$output_file" 2>/dev/null; then
               echo "❌ Error: Failed to decode $file_name"
               echo "   This usually means the secret is not valid base64"
+              echo "   Secret length: ${#secret_value} characters"
+              echo "   First 20 chars: ${secret_value:0:20}..."
               echo "   Re-upload using: ./upload-wallet-to-github.sh"
               return 1
             fi
@@ -195,6 +275,8 @@ jobs:
             # Check if decoded file is empty
             if [ ! -s "$output_file" ]; then
               echo "❌ Error: Decoded $file_name is empty"
+              echo "   This might indicate the secret was incorrectly encoded"
+              echo "   Re-upload using: ./upload-wallet-to-github.sh"
               return 1
             fi
             
