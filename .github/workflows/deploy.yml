@@ -12,6 +12,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Checkout backend repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/openflow-backend
+          path: openflow-backend
+
+      - name: Checkout frontend repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/openflow-frontend
+          path: openflow-frontend
+
+      - name: Ensure podman is installed
+        run: |
+          if ! command -v podman >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y podman
+          fi
+
+      - name: Build backend image
+        run: |
+          podman build -t openflow-backend:latest ./openflow-backend
+
+      - name: Build frontend image
+        run: |
+          podman build -t openflow-frontend:latest ./openflow-frontend
+
       - name: Kill any processes on ports 3000/8080
         run: |
           sudo fuser -k 3000/tcp || true
