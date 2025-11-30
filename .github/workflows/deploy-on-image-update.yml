@@ -96,15 +96,84 @@ jobs:
 
       - name: Create Oracle Wallet Secret (from GH secrets)
         run: |
+          set -e
+          
+          # Check if wallet secrets are set
+          WALLET_SECRETS=(
+            "ORACLE_WALLET_CWALLET"
+            "ORACLE_WALLET_EWALLET"
+            "ORACLE_WALLET_KEYSTORE"
+            "ORACLE_WALLET_OJDBC"
+            "ORACLE_WALLET_SQLNET"
+            "ORACLE_WALLET_TNSNAMES"
+            "ORACLE_WALLET_TRUSTSTORE"
+          )
+          
+          MISSING_SECRETS=()
+          for secret in "${WALLET_SECRETS[@]}"; do
+            if [ -z "${!secret}" ]; then
+              MISSING_SECRETS+=("$secret")
+            fi
+          done
+          
+          if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
+            echo "❌ Error: Missing required GitHub Secrets:"
+            for secret in "${MISSING_SECRETS[@]}"; do
+              echo "   - $secret"
+            done
+            echo ""
+            echo "Please set these secrets in: Settings → Secrets and variables → Actions"
+            echo "Use ./upload-wallet-to-github.sh to upload wallet files automatically"
+            exit 1
+          fi
+          
           mkdir -p wallet-temp
-          echo '${{ secrets.ORACLE_WALLET_CWALLET }}' | base64 -d > wallet-temp/cwallet.sso
-          echo '${{ secrets.ORACLE_WALLET_EWALLET }}' | base64 -d > wallet-temp/ewallet.p12
-          echo '${{ secrets.ORACLE_WALLET_KEYSTORE }}' | base64 -d > wallet-temp/keystore.jks
-          echo '${{ secrets.ORACLE_WALLET_OJDBC }}' | base64 -d > wallet-temp/ojdbc.properties
-          echo '${{ secrets.ORACLE_WALLET_SQLNET }}' | base64 -d > wallet-temp/sqlnet.ora
-          echo '${{ secrets.ORACLE_WALLET_TNSNAMES }}' | base64 -d > wallet-temp/tnsnames.ora
-          echo '${{ secrets.ORACLE_WALLET_TRUSTSTORE }}' | base64 -d > wallet-temp/truststore.jks
+          
+          # Decode wallet files with error checking
+          echo "Decoding wallet files..."
+          
+          decode_wallet_file() {
+            local secret_name=$1
+            local output_file=$2
+            local secret_value="${!secret_name}"
+            
+            if [ -z "$secret_value" ]; then
+              echo "❌ Error: $secret_name is empty"
+              return 1
+            fi
+            
+            if ! echo "$secret_value" | base64 -d > "$output_file" 2>/dev/null; then
+              echo "❌ Error: Failed to decode $secret_name (invalid base64 or empty)"
+              return 1
+            fi
+            
+            if [ ! -s "$output_file" ]; then
+              echo "❌ Error: Decoded $secret_name is empty"
+              return 1
+            fi
+            
+            echo "✅ Decoded $secret_name"
+            return 0
+          }
+          
+          # Export secrets as environment variables for the function
+          export ORACLE_WALLET_CWALLET='${{ secrets.ORACLE_WALLET_CWALLET }}'
+          export ORACLE_WALLET_EWALLET='${{ secrets.ORACLE_WALLET_EWALLET }}'
+          export ORACLE_WALLET_KEYSTORE='${{ secrets.ORACLE_WALLET_KEYSTORE }}'
+          export ORACLE_WALLET_OJDBC='${{ secrets.ORACLE_WALLET_OJDBC }}'
+          export ORACLE_WALLET_SQLNET='${{ secrets.ORACLE_WALLET_SQLNET }}'
+          export ORACLE_WALLET_TNSNAMES='${{ secrets.ORACLE_WALLET_TNSNAMES }}'
+          export ORACLE_WALLET_TRUSTSTORE='${{ secrets.ORACLE_WALLET_TRUSTSTORE }}'
+          
+          decode_wallet_file ORACLE_WALLET_CWALLET wallet-temp/cwallet.sso || exit 1
+          decode_wallet_file ORACLE_WALLET_EWALLET wallet-temp/ewallet.p12 || exit 1
+          decode_wallet_file ORACLE_WALLET_KEYSTORE wallet-temp/keystore.jks || exit 1
+          decode_wallet_file ORACLE_WALLET_OJDBC wallet-temp/ojdbc.properties || exit 1
+          decode_wallet_file ORACLE_WALLET_SQLNET wallet-temp/sqlnet.ora || exit 1
+          decode_wallet_file ORACLE_WALLET_TNSNAMES wallet-temp/tnsnames.ora || exit 1
+          decode_wallet_file ORACLE_WALLET_TRUSTSTORE wallet-temp/truststore.jks || exit 1
 
+          echo "Creating Kubernetes secret..."
           kubectl create secret generic oracle-wallet-secret \
             --from-file=cwallet.sso=wallet-temp/cwallet.sso \
             --from-file=ewallet.p12=wallet-temp/ewallet.p12 \
@@ -116,6 +185,7 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
 
           rm -rf wallet-temp
+          echo "✅ Oracle wallet secret created successfully"
 
       - name: Create GHCR Image Pull Secret
         run: |
