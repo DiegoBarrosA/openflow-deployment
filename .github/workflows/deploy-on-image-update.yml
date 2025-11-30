@@ -157,6 +157,20 @@ jobs:
           echo ""
           echo "Environment: $ENV_NAME"
           echo "Repository: ${{ github.repository }}"
+          echo "GITHUB_ENVIRONMENT: ${GITHUB_ENVIRONMENT:-not set}"
+          echo ""
+          
+          # Check if we're actually in an environment context
+          if [ -z "$GITHUB_ENVIRONMENT" ]; then
+            echo "⚠️  WARNING: GITHUB_ENVIRONMENT is not set!"
+            echo "   This means the workflow might not be running in the environment context"
+            echo "   Environment secrets won't be accessible if this is the case"
+          else
+            echo "✅ GITHUB_ENVIRONMENT is set to: $GITHUB_ENVIRONMENT"
+            if [ "$GITHUB_ENVIRONMENT" != "$ENV_NAME" ]; then
+              echo "   ⚠️  WARNING: GITHUB_ENVIRONMENT ($GITHUB_ENVIRONMENT) doesn't match expected ($ENV_NAME)"
+            fi
+          fi
           echo ""
           
           # Test 1: Try to access a test secret (if it exists)
@@ -184,15 +198,30 @@ jobs:
           elif [ "$WALLET_SECRET_VAL" = "" ]; then
             echo "   ❌ Secret is empty string"
           elif [ $WALLET_LEN -eq 1 ]; then
-            echo "   ⚠️  WARNING: Secret is only 1 character"
-            echo "   This usually means:"
-            echo "   1. Secret value is actually empty in GitHub"
-            echo "   2. Environment protection rules are blocking access"
-            echo "   3. Secret propagation delay (wait 2-3 minutes)"
-            echo "   4. Environment context not properly configured"
+            echo "   ❌ CRITICAL: Secret is only 1 character!"
+            echo "   This usually means the secret value is actually empty or corrupted in GitHub"
             echo ""
-            echo "   First character (hex): $(echo -n "$WALLET_SECRET_VAL" | od -An -tx1 | tr -d ' \n')"
-            echo "   First character (visible): '$(echo -n "$WALLET_SECRET_VAL" | cat -A)'"
+            echo "   Analyzing the single character:"
+            CHAR_HEX=$(echo -n "$WALLET_SECRET_VAL" | od -An -tx1 | tr -d ' \n')
+            CHAR_VISIBLE=$(echo -n "$WALLET_SECRET_VAL" | cat -A)
+            CHAR_ASCII=$(printf "%d" "'$WALLET_SECRET_VAL")
+            echo "   - Hex: 0x$CHAR_HEX"
+            echo "   - ASCII code: $CHAR_ASCII"
+            echo "   - Visible: '$CHAR_VISIBLE'"
+            echo ""
+            if [ "$CHAR_ASCII" -eq 0 ] || [ -z "$CHAR_VISIBLE" ] || [ "$CHAR_VISIBLE" = "$" ]; then
+              echo "   ⚠️  The character appears to be null/empty/placeholder"
+              echo "   This strongly suggests the secret is empty in GitHub"
+            fi
+            echo ""
+            echo "   Possible causes:"
+            echo "   1. Secret was uploaded but value is actually empty (most likely)"
+            echo "   2. Secret upload failed silently"
+            echo "   3. GitHub Actions bug with environment secrets"
+            echo ""
+            echo "   SOLUTION: Re-upload the secret using:"
+            echo "   ./upload-wallet-to-github.sh"
+            echo "   Make sure to choose option 1 (Environment level) and verify upload succeeds"
           elif [ $WALLET_LEN -lt 10 ]; then
             echo "   ⚠️  WARNING: Secret is suspiciously short ($WALLET_LEN chars)"
           elif [ $WALLET_LEN -gt 100 ]; then
@@ -207,8 +236,30 @@ jobs:
           echo "Test 3: Checking secret access context..."
           echo "   GITHUB_ENVIRONMENT: ${GITHUB_ENVIRONMENT:-not set}"
           echo "   Workflow environment variable: $ENV_NAME"
-          if [ "$GITHUB_ENVIRONMENT" != "$ENV_NAME" ] && [ -n "$GITHUB_ENVIRONMENT" ]; then
+          if [ -z "$GITHUB_ENVIRONMENT" ]; then
+            echo "   ❌ CRITICAL: GITHUB_ENVIRONMENT is not set!"
+            echo "   This means the workflow is NOT running in environment context"
+            echo "   Environment secrets will NOT be accessible"
+            echo "   Possible causes:"
+            echo "   1. Environment requires approval (check workflow run for 'Review deployments')"
+            echo "   2. Environment protection rules are blocking execution"
+            echo "   3. Environment doesn't exist or is misconfigured"
+          elif [ "$GITHUB_ENVIRONMENT" != "$ENV_NAME" ]; then
             echo "   ⚠️  WARNING: GITHUB_ENVIRONMENT ($GITHUB_ENVIRONMENT) doesn't match expected ($ENV_NAME)"
+          else
+            echo "   ✅ Environment context is properly set"
+          fi
+          echo ""
+          
+          # Test 4: Check if other secrets (like AWS) are accessible
+          echo "Test 4: Checking if other environment secrets are accessible..."
+          AWS_KEY_LEN=${#AWS_ACCESS_KEY_ID:-0}
+          if [ $AWS_KEY_LEN -gt 0 ]; then
+            echo "   ✅ AWS_ACCESS_KEY_ID is accessible (length: $AWS_KEY_LEN chars)"
+            echo "   This suggests environment context IS working for some secrets"
+          else
+            echo "   ⚠️  AWS_ACCESS_KEY_ID is not accessible"
+            echo "   This suggests environment context might not be working"
           fi
           echo ""
           
