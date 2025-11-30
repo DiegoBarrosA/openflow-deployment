@@ -108,6 +108,9 @@ echo ""
 read -p "Choose option (1 or 2, default: 1): " SECRET_LOCATION
 echo ""
 
+# Clear any leftover input
+SECRET_LOCATION=$(echo "$SECRET_LOCATION" | tr -d '[:space:]')
+
 if [[ "$SECRET_LOCATION" == "2" ]]; then
     UPLOAD_TO_ENV=false
     ENV_NAME=""
@@ -116,10 +119,45 @@ if [[ "$SECRET_LOCATION" == "2" ]]; then
 else
     UPLOAD_TO_ENV=true
     echo "Which environment should secrets be uploaded to?"
-    read -p "Environment name (staging/production, default: staging): " ENV_NAME
-    ENV_NAME="${ENV_NAME:-staging}"
+    echo "   (Enter 'staging' or 'production', or press Enter for default: staging)"
+    read -r ENV_NAME
+    
+    # Trim whitespace and handle empty input
+    ENV_NAME=$(echo "$ENV_NAME" | xargs)
+    
+    # If empty or looks like a yes/no answer from previous prompt, use default
+    if [ -z "$ENV_NAME" ] || [[ "$ENV_NAME" =~ ^[YyNn]$ ]]; then
+        ENV_NAME="staging"
+        echo -e "${YELLOW}   Using default environment: staging${NC}"
+    fi
+    
+    # Validate it's a reasonable environment name
+    if [[ ! "$ENV_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        echo -e "${RED}❌ Invalid environment name: $ENV_NAME${NC}"
+        echo "   Environment names must contain only letters, numbers, hyphens, and underscores"
+        exit 1
+    fi
+    
     echo -e "${GREEN}✅ Will upload to environment: $ENV_NAME${NC}"
     echo ""
+    
+    # Verify environment exists
+    if command -v gh >/dev/null 2>&1; then
+        echo "Verifying environment exists..."
+        if gh api "repos/$REPO_OWNER/$REPO_NAME/environments/$ENV_NAME" >/dev/null 2>&1; then
+            echo -e "   ${GREEN}✅ Environment '$ENV_NAME' exists${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Warning: Environment '$ENV_NAME' may not exist${NC}"
+            echo "   Available environments:"
+            gh api "repos/$REPO_OWNER/$REPO_NAME/environments" 2>/dev/null | grep -o '"name":"[^"]*' | cut -d'"' -f4 || echo "   (Could not list environments)"
+            echo ""
+            read -p "Continue anyway? (y/N) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
+        fi
+    fi
 fi
 
 echo ""
@@ -224,58 +262,71 @@ upload_with_gh_cli() {
     # we'll base64 encode the file content and upload it
     # The workflow will then base64 decode it
     
-    if command -v base64 >/dev/null 2>&1; then
-        echo "   Encoding to base64..."
-        # Encode to base64 (no line breaks) - this is what the workflow expects
-        # Try GNU base64 first (supports -w 0), fallback to BSD base64
-        encoded=$(base64 -w 0 "$file_path" 2>/dev/null || base64 "$file_path" | tr -d '\n')
-        
-        if [ -z "$encoded" ]; then
-            echo -e "${RED}❌ Failed to encode file${NC}"
-            return 1
-        fi
-        
-        # Show encoded value info
-        encoded_length=${#encoded}
-        echo "   Encoded length: $encoded_length characters"
-        echo "   First 50 chars: ${encoded:0:50}..."
-        echo "   Last 50 chars: ...${encoded: -50}"
-        
-        # Verify the encoded value is valid base64 (should only contain A-Z, a-z, 0-9, +, /, =)
-        if ! echo "$encoded" | grep -qE '^[A-Za-z0-9+/]*={0,2}$'; then
-            echo -e "${RED}❌ Encoded value contains invalid base64 characters${NC}"
-            return 1
-        fi
-        echo "   ✅ Base64 format is valid"
-        
-        # Verify we can decode it back (sanity check)
-        if ! echo -n "$encoded" | base64 -d >/dev/null 2>&1; then
-            echo -e "${RED}❌ Encoded value cannot be decoded (encoding failed)${NC}"
-            return 1
-        fi
-        echo "   ✅ Encoding verified (can be decoded)"
-        
-        echo -n "   Uploading to GitHub Secrets... "
-        
-        # Upload using gh CLI - pass base64 encoded value via stdin
-        # GitHub CLI encrypts the value before sending to GitHub
-        # Use printf instead of echo -n for better reliability with long strings
-        # Write to temp file first to ensure we have the full value, then pipe it
-        TEMP_FILE=$(mktemp)
-        printf '%s' "$encoded" > "$TEMP_FILE"
-        
-        # Verify the file was written correctly
-        FILE_SIZE=$(wc -c < "$TEMP_FILE")
-        if [ "$FILE_SIZE" -ne "$encoded_length" ]; then
-            echo -e "${RED}❌ File write verification failed (expected $encoded_length, got $FILE_SIZE)${NC}"
-            rm -f "$TEMP_FILE"
-            return 1
-        fi
+        if command -v base64 >/dev/null 2>&1; then
+            echo "   Encoding to base64..."
+            # Create temp file for encoded value - write directly to avoid shell variable size limits
+            TEMP_FILE=$(mktemp)
+            
+            # Encode directly to temp file (no shell variable)
+            # Try GNU base64 first (supports -w 0), fallback to BSD base64
+            if base64 -w 0 "$file_path" > "$TEMP_FILE" 2>/dev/null; then
+                # GNU base64 worked
+                :
+            elif base64 "$file_path" | tr -d '\n' > "$TEMP_FILE" 2>/dev/null; then
+                # BSD base64 worked
+                :
+            else
+                echo -e "${RED}❌ Failed to encode file${NC}"
+                rm -f "$TEMP_FILE"
+                return 1
+            fi
+            
+            # Verify the encoded file was created and has content
+            encoded_length=$(wc -c < "$TEMP_FILE")
+            if [ "$encoded_length" -eq 0 ]; then
+                echo -e "${RED}❌ Encoded file is empty${NC}"
+                rm -f "$TEMP_FILE"
+                return 1
+            fi
+            
+            echo "   Encoded length: $encoded_length characters"
+            
+            # Verify encoding worked by checking file size matches expected
+            EXPECTED_BASE64_SIZE=$(( (file_size + 2) / 3 * 4 ))
+            if [ $encoded_length -lt $EXPECTED_BASE64_SIZE ]; then
+                echo -e "${YELLOW}⚠️  Warning: Encoded length ($encoded_length) is shorter than expected (~$EXPECTED_BASE64_SIZE)${NC}"
+            fi
+            
+            # Show first and last 50 chars for verification
+            echo "   First 50 chars: $(head -c 50 "$TEMP_FILE")..."
+            echo "   Last 50 chars: ...$(tail -c 50 "$TEMP_FILE")"
+            
+            # Verify the encoded value is valid base64
+            if ! head -c 100 "$TEMP_FILE" | grep -qE '^[A-Za-z0-9+/]*={0,2}$'; then
+                echo -e "${RED}❌ Encoded value contains invalid base64 characters${NC}"
+                rm -f "$TEMP_FILE"
+                return 1
+            fi
+            echo "   ✅ Base64 format is valid"
+            
+            # Verify we can decode it back (sanity check)
+            if ! base64 -d "$TEMP_FILE" >/dev/null 2>&1; then
+                echo -e "${RED}❌ Encoded value cannot be decoded (encoding failed)${NC}"
+                rm -f "$TEMP_FILE"
+                return 1
+            fi
+            echo "   ✅ Encoding verified (can be decoded)"
+            
+            echo -n "   Uploading to GitHub Secrets... "
         
         if [ "$UPLOAD_TO_ENV" = true ]; then
             # Upload to environment level
-            # Use input redirection instead of pipe to avoid potential buffering issues
-            if gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --env "$ENV_NAME" --body - < "$TEMP_FILE" >/dev/null 2>&1; then
+            # Use input redirection - this is more reliable than piping
+            # Capture both stdout and stderr to see any errors
+            UPLOAD_OUTPUT=$(gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --env "$ENV_NAME" --body - < "$TEMP_FILE" 2>&1)
+            UPLOAD_EXIT=$?
+            
+            if [ $UPLOAD_EXIT -eq 0 ]; then
                 echo -e "${GREEN}✅ Uploaded to environment: $ENV_NAME${NC}"
                 
                 # Verify the upload by checking if secret exists
@@ -287,16 +338,21 @@ upload_with_gh_cli() {
                     return 0  # Still consider it success, might be a timing issue
                 fi
             else
-                echo -e "${RED}❌ Upload failed${NC}"
+                echo -e "${RED}❌ Upload failed (exit code: $UPLOAD_EXIT)${NC}"
+                echo "   Error output: $UPLOAD_OUTPUT"
                 echo "   Try running manually:"
-                echo "   cat <file> | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --env $ENV_NAME --body -"
+                echo "   gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --env $ENV_NAME --body - < <temp-file>"
+                echo "   Or test with: echo 'test' | base64 | gh secret set TEST --repo $REPO_OWNER/$REPO_NAME --env $ENV_NAME --body -"
                 rm -f "$TEMP_FILE"
                 return 1
             fi
         else
             # Upload to repository level
-            # Use input redirection instead of pipe to avoid potential buffering issues
-            if gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - < "$TEMP_FILE" >/dev/null 2>&1; then
+            # Use input redirection - this is more reliable than piping
+            UPLOAD_OUTPUT=$(gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - < "$TEMP_FILE" 2>&1)
+            UPLOAD_EXIT=$?
+            
+            if [ $UPLOAD_EXIT -eq 0 ]; then
                 echo -e "${GREEN}✅ Uploaded to repository${NC}"
                 
                 # Verify the upload by checking if secret exists
@@ -308,16 +364,17 @@ upload_with_gh_cli() {
                     return 0  # Still consider it success, might be a timing issue
                 fi
             else
-                echo -e "${RED}❌ Upload failed${NC}"
+                echo -e "${RED}❌ Upload failed (exit code: $UPLOAD_EXIT)${NC}"
+                echo "   Error output: $UPLOAD_OUTPUT"
                 echo "   Try running manually:"
-                echo "   cat <file> | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --body -"
+                echo "   gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --body - < <temp-file>"
                 rm -f "$TEMP_FILE"
                 return 1
             fi
         fi
         
-        # Clean up temp file
-        rm -f "$TEMP_FILE"
+        # Clean up temp file (if it still exists - it may have been removed already)
+        rm -f "$TEMP_FILE" 2>/dev/null || true
     else
         echo -e "${RED}❌ base64 command not found${NC}"
         return 1
