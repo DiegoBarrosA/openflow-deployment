@@ -136,17 +136,30 @@ jobs:
             --docker-password=${{ secrets.GITHUB_TOKEN }} \
             --dry-run=client -o yaml | kubectl apply -f -
 
-        - name: Deploy to EKS
-          run: |
-            kubectl apply -f kube.yaml
+      - name: Deploy to EKS
+        run: |
+          kubectl apply -f kube.yaml
 
-        - name: Update deployment images
-          run: |
-            # Update backend image
-            kubectl set image deployment/openflow-backend openflow-backend=${{ needs.build-and-push.outputs.backend-image }} || true
+      - name: Update deployment images
+        run: |
+            # Determine backend image (prefer build output, fallback to default latest)
+            BACKEND_IMG="${{ needs.build-and-push.outputs.backend-image }}"
+            if [ -z "$BACKEND_IMG" ]; then
+              BACKEND_IMG="${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:latest"
+            fi
 
-            # Update frontend image
-            kubectl set image deployment/openflow-frontend frontend=${{ needs.build-and-push.outputs.frontend-image }} || true
+            # Determine frontend image (prefer build output, fallback to default latest)
+            FRONTEND_IMG="${{ needs.build-and-push.outputs.frontend-image }}"
+            if [ -z "$FRONTEND_IMG" ]; then
+              FRONTEND_IMG="${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:latest"
+            fi
+
+            echo "Using backend image: $BACKEND_IMG"
+            echo "Using frontend image: $FRONTEND_IMG"
+
+            # Update images: use correct container names (backend, frontend)
+            kubectl set image deployment/openflow-backend backend=$BACKEND_IMG || true
+            kubectl set image deployment/openflow-frontend frontend=$FRONTEND_IMG || true
 
       - name: Wait for rollout
         run: |
