@@ -12,7 +12,7 @@ on:
           - staging
           - production
 
-
+env:
   REGISTRY: ghcr.io
   AWS_REGION: us-east-1
   EKS_CLUSTER_NAME: openflow-cluster
