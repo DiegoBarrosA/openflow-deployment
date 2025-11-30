@@ -273,8 +273,9 @@ upload_with_gh_cli() {
         fi
         
         if [ "$UPLOAD_TO_ENV" = true ]; then
-            # Upload to environment level - pipe from file to avoid shell variable size limits
-            if cat "$TEMP_FILE" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --env "$ENV_NAME" --body - >/dev/null 2>&1; then
+            # Upload to environment level
+            # Use input redirection instead of pipe to avoid potential buffering issues
+            if gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --env "$ENV_NAME" --body - < "$TEMP_FILE" >/dev/null 2>&1; then
                 echo -e "${GREEN}✅ Uploaded to environment: $ENV_NAME${NC}"
                 
                 # Verify the upload by checking if secret exists
@@ -293,8 +294,9 @@ upload_with_gh_cli() {
                 return 1
             fi
         else
-            # Upload to repository level - pipe from file
-            if cat "$TEMP_FILE" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - >/dev/null 2>&1; then
+            # Upload to repository level
+            # Use input redirection instead of pipe to avoid potential buffering issues
+            if gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - < "$TEMP_FILE" >/dev/null 2>&1; then
                 echo -e "${GREEN}✅ Uploaded to repository${NC}"
                 
                 # Verify the upload by checking if secret exists

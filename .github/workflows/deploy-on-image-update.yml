@@ -361,6 +361,16 @@ jobs:
           echo "✅ All wallet secrets are set"
 
       - name: Validate Wallet Secrets Format
+        env:
+          # Explicitly declare secrets as environment variables
+          # This is required for environment secrets to be accessible
+          ORACLE_WALLET_CWALLET: ${{ secrets.ORACLE_WALLET_CWALLET }}
+          ORACLE_WALLET_EWALLET: ${{ secrets.ORACLE_WALLET_EWALLET }}
+          ORACLE_WALLET_KEYSTORE: ${{ secrets.ORACLE_WALLET_KEYSTORE }}
+          ORACLE_WALLET_OJDBC: ${{ secrets.ORACLE_WALLET_OJDBC }}
+          ORACLE_WALLET_SQLNET: ${{ secrets.ORACLE_WALLET_SQLNET }}
+          ORACLE_WALLET_TNSNAMES: ${{ secrets.ORACLE_WALLET_TNSNAMES }}
+          ORACLE_WALLET_TRUSTSTORE: ${{ secrets.ORACLE_WALLET_TRUSTSTORE }}
         run: |
           set -e
           echo "Validating wallet secrets format (base64 character set)..."
@@ -382,7 +392,7 @@ jobs:
           
           # Test secret access - check if we can read the length
           echo "Testing secret access..."
-          TEST_VAL="${{ secrets.ORACLE_WALLET_CWALLET }}"
+          TEST_VAL="$ORACLE_WALLET_CWALLET"
           TEST_LEN=${#TEST_VAL}
           echo "   ORACLE_WALLET_CWALLET length: $TEST_LEN characters"
           if [ $TEST_LEN -eq 1 ]; then
@@ -400,15 +410,14 @@ jobs:
           fi
           echo ""
           
-          # Capture secrets into variables first (without quotes around the substitution)
-          # This ensures we get the actual value, not a quoted string
-          ORACLE_WALLET_CWALLET_VAL="${{ secrets.ORACLE_WALLET_CWALLET }}"
-          ORACLE_WALLET_EWALLET_VAL="${{ secrets.ORACLE_WALLET_EWALLET }}"
-          ORACLE_WALLET_KEYSTORE_VAL="${{ secrets.ORACLE_WALLET_KEYSTORE }}"
-          ORACLE_WALLET_OJDBC_VAL="${{ secrets.ORACLE_WALLET_OJDBC }}"
-          ORACLE_WALLET_SQLNET_VAL="${{ secrets.ORACLE_WALLET_SQLNET }}"
-          ORACLE_WALLET_TNSNAMES_VAL="${{ secrets.ORACLE_WALLET_TNSNAMES }}"
-          ORACLE_WALLET_TRUSTSTORE_VAL="${{ secrets.ORACLE_WALLET_TRUSTSTORE }}"
+          # Use environment variables directly (they're already set via env: block above)
+          ORACLE_WALLET_CWALLET_VAL="$ORACLE_WALLET_CWALLET"
+          ORACLE_WALLET_EWALLET_VAL="$ORACLE_WALLET_EWALLET"
+          ORACLE_WALLET_KEYSTORE_VAL="$ORACLE_WALLET_KEYSTORE"
+          ORACLE_WALLET_OJDBC_VAL="$ORACLE_WALLET_OJDBC"
+          ORACLE_WALLET_SQLNET_VAL="$ORACLE_WALLET_SQLNET"
+          ORACLE_WALLET_TNSNAMES_VAL="$ORACLE_WALLET_TNSNAMES"
+          ORACLE_WALLET_TRUSTSTORE_VAL="$ORACLE_WALLET_TRUSTSTORE"
           
           # Diagnostic: Show raw lengths (before cleaning) to help debug
           echo "Raw secret lengths (before cleaning):"
@@ -514,6 +523,16 @@ jobs:
           echo "✅ All wallet secrets have valid base64 format"
 
       - name: Create Oracle Wallet Secret (from GH secrets)
+        env:
+          # Explicitly declare secrets as environment variables
+          # This is required for environment secrets to be accessible
+          ORACLE_WALLET_CWALLET: ${{ secrets.ORACLE_WALLET_CWALLET }}
+          ORACLE_WALLET_EWALLET: ${{ secrets.ORACLE_WALLET_EWALLET }}
+          ORACLE_WALLET_KEYSTORE: ${{ secrets.ORACLE_WALLET_KEYSTORE }}
+          ORACLE_WALLET_OJDBC: ${{ secrets.ORACLE_WALLET_OJDBC }}
+          ORACLE_WALLET_SQLNET: ${{ secrets.ORACLE_WALLET_SQLNET }}
+          ORACLE_WALLET_TNSNAMES: ${{ secrets.ORACLE_WALLET_TNSNAMES }}
+          ORACLE_WALLET_TRUSTSTORE: ${{ secrets.ORACLE_WALLET_TRUSTSTORE }}
         run: |
           set -e
           mkdir -p wallet-temp
@@ -569,14 +588,14 @@ jobs:
             return 0
           }
           
-          # Capture secrets into variables (without quotes around substitution)
-          ORACLE_WALLET_CWALLET_VAL="${{ secrets.ORACLE_WALLET_CWALLET }}"
-          ORACLE_WALLET_EWALLET_VAL="${{ secrets.ORACLE_WALLET_EWALLET }}"
-          ORACLE_WALLET_KEYSTORE_VAL="${{ secrets.ORACLE_WALLET_KEYSTORE }}"
-          ORACLE_WALLET_OJDBC_VAL="${{ secrets.ORACLE_WALLET_OJDBC }}"
-          ORACLE_WALLET_SQLNET_VAL="${{ secrets.ORACLE_WALLET_SQLNET }}"
-          ORACLE_WALLET_TNSNAMES_VAL="${{ secrets.ORACLE_WALLET_TNSNAMES }}"
-          ORACLE_WALLET_TRUSTSTORE_VAL="${{ secrets.ORACLE_WALLET_TRUSTSTORE }}"
+          # Use environment variables directly (they're already set via env: block above)
+          ORACLE_WALLET_CWALLET_VAL="$ORACLE_WALLET_CWALLET"
+          ORACLE_WALLET_EWALLET_VAL="$ORACLE_WALLET_EWALLET"
+          ORACLE_WALLET_KEYSTORE_VAL="$ORACLE_WALLET_KEYSTORE"
+          ORACLE_WALLET_OJDBC_VAL="$ORACLE_WALLET_OJDBC"
+          ORACLE_WALLET_SQLNET_VAL="$ORACLE_WALLET_SQLNET"
+          ORACLE_WALLET_TNSNAMES_VAL="$ORACLE_WALLET_TNSNAMES"
+          ORACLE_WALLET_TRUSTSTORE_VAL="$ORACLE_WALLET_TRUSTSTORE"
           
           # Decode each wallet file
           decode_file "$ORACLE_WALLET_CWALLET_VAL" wallet-temp/cwallet.sso "cwallet.sso" || exit 1
