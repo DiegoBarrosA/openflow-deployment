@@ -361,16 +361,6 @@ jobs:
           echo "✅ All wallet secrets are set"
 
       - name: Validate Wallet Secrets Format
-        env:
-          # Explicitly declare secrets as environment variables
-          # This is required for environment secrets to be accessible
-          ORACLE_WALLET_CWALLET: ${{ secrets.ORACLE_WALLET_CWALLET }}
-          ORACLE_WALLET_EWALLET: ${{ secrets.ORACLE_WALLET_EWALLET }}
-          ORACLE_WALLET_KEYSTORE: ${{ secrets.ORACLE_WALLET_KEYSTORE }}
-          ORACLE_WALLET_OJDBC: ${{ secrets.ORACLE_WALLET_OJDBC }}
-          ORACLE_WALLET_SQLNET: ${{ secrets.ORACLE_WALLET_SQLNET }}
-          ORACLE_WALLET_TNSNAMES: ${{ secrets.ORACLE_WALLET_TNSNAMES }}
-          ORACLE_WALLET_TRUSTSTORE: ${{ secrets.ORACLE_WALLET_TRUSTSTORE }}
         run: |
           set -e
           echo "Validating wallet secrets format (base64 character set)..."
@@ -383,41 +373,45 @@ jobs:
           echo "   Repository: ${{ github.repository }}"
           echo "   Workflow run ID: ${{ github.run_id }}"
           echo ""
-          echo "⚠️  IMPORTANT: If this workflow uses an environment (staging/production),"
-          echo "   secrets must be set at the ENVIRONMENT level, not just repository level."
-          echo "   Go to: Settings → Environments → [environment name] → Secrets"
+          
+          # Save secrets to files to verify actual content (avoid masking issues with ${#VAR})
+          # Access secrets directly in run block, not via env: to avoid truncation
+          mkdir -p secret-temp
+          
+          echo "Saving secrets to files to verify actual content..."
+          echo "${{ secrets.ORACLE_WALLET_CWALLET }}" > secret-temp/cwallet.b64
+          echo "${{ secrets.ORACLE_WALLET_EWALLET }}" > secret-temp/ewallet.b64
+          echo "${{ secrets.ORACLE_WALLET_KEYSTORE }}" > secret-temp/keystore.b64
+          echo "${{ secrets.ORACLE_WALLET_OJDBC }}" > secret-temp/ojdbc.b64
+          echo "${{ secrets.ORACLE_WALLET_SQLNET }}" > secret-temp/sqlnet.b64
+          echo "${{ secrets.ORACLE_WALLET_TNSNAMES }}" > secret-temp/tnsnames.b64
+          echo "${{ secrets.ORACLE_WALLET_TRUSTSTORE }}" > secret-temp/truststore.b64
+          
+          # Check file sizes (more reliable than variable length checks)
           echo ""
-          echo "Note: Secret values are masked in logs for security"
+          echo "Secret file sizes (actual content):"
+          for file in secret-temp/*.b64; do
+            size=$(wc -c < "$file")
+            name=$(basename "$file" .b64)
+            echo "   $name: $size bytes"
+            if [ $size -le 1 ]; then
+              echo "      ❌ File is empty or only 1 byte!"
+            elif [ $size -lt 10 ]; then
+              echo "      ⚠️  File is suspiciously small"
+            elif [ $size -gt 100 ]; then
+              echo "      ✅ File size looks valid"
+            fi
+          done
           echo ""
           
-          # Test secret access - check if we can read the length
-          echo "Testing secret access..."
-          TEST_VAL="$ORACLE_WALLET_CWALLET"
-          TEST_LEN=${#TEST_VAL}
-          echo "   ORACLE_WALLET_CWALLET length: $TEST_LEN characters"
-          if [ $TEST_LEN -eq 1 ]; then
-            echo "   ⚠️  WARNING: Secret appears to be only 1 character!"
-            echo "   This could mean:"
-            echo "   1. Secret is empty in GitHub (check: https://github.com/${{ github.repository }}/settings/environments/$ENV_NAME/secrets)"
-            echo "   2. Environment protection rules are blocking access"
-            echo "   3. Secret propagation delay (wait 2-3 minutes after upload)"
-            echo "   4. Environment not properly configured"
-            echo ""
-            echo "   Verify secrets exist using:"
-            echo "   gh secret list --repo ${{ github.repository }} --env $ENV_NAME | grep ORACLE_WALLET"
-          elif [ $TEST_LEN -gt 100 ]; then
-            echo "   ✅ Secret appears to have valid length"
-          fi
-          echo ""
-          
-          # Use environment variables directly (they're already set via env: block above)
-          ORACLE_WALLET_CWALLET_VAL="$ORACLE_WALLET_CWALLET"
-          ORACLE_WALLET_EWALLET_VAL="$ORACLE_WALLET_EWALLET"
-          ORACLE_WALLET_KEYSTORE_VAL="$ORACLE_WALLET_KEYSTORE"
-          ORACLE_WALLET_OJDBC_VAL="$ORACLE_WALLET_OJDBC"
-          ORACLE_WALLET_SQLNET_VAL="$ORACLE_WALLET_SQLNET"
-          ORACLE_WALLET_TNSNAMES_VAL="$ORACLE_WALLET_TNSNAMES"
-          ORACLE_WALLET_TRUSTSTORE_VAL="$ORACLE_WALLET_TRUSTSTORE"
+          # Read from files for validation (avoid variable truncation issues)
+          ORACLE_WALLET_CWALLET_VAL=$(cat secret-temp/cwallet.b64)
+          ORACLE_WALLET_EWALLET_VAL=$(cat secret-temp/ewallet.b64)
+          ORACLE_WALLET_KEYSTORE_VAL=$(cat secret-temp/keystore.b64)
+          ORACLE_WALLET_OJDBC_VAL=$(cat secret-temp/ojdbc.b64)
+          ORACLE_WALLET_SQLNET_VAL=$(cat secret-temp/sqlnet.b64)
+          ORACLE_WALLET_TNSNAMES_VAL=$(cat secret-temp/tnsnames.b64)
+          ORACLE_WALLET_TRUSTSTORE_VAL=$(cat secret-temp/truststore.b64)
           
           # Diagnostic: Show raw lengths (before cleaning) to help debug
           echo "Raw secret lengths (before cleaning):"
@@ -523,16 +517,6 @@ jobs:
           echo "✅ All wallet secrets have valid base64 format"
 
       - name: Create Oracle Wallet Secret (from GH secrets)
-        env:
-          # Explicitly declare secrets as environment variables
-          # This is required for environment secrets to be accessible
-          ORACLE_WALLET_CWALLET: ${{ secrets.ORACLE_WALLET_CWALLET }}
-          ORACLE_WALLET_EWALLET: ${{ secrets.ORACLE_WALLET_EWALLET }}
-          ORACLE_WALLET_KEYSTORE: ${{ secrets.ORACLE_WALLET_KEYSTORE }}
-          ORACLE_WALLET_OJDBC: ${{ secrets.ORACLE_WALLET_OJDBC }}
-          ORACLE_WALLET_SQLNET: ${{ secrets.ORACLE_WALLET_SQLNET }}
-          ORACLE_WALLET_TNSNAMES: ${{ secrets.ORACLE_WALLET_TNSNAMES }}
-          ORACLE_WALLET_TRUSTSTORE: ${{ secrets.ORACLE_WALLET_TRUSTSTORE }}
         run: |
           set -e
           mkdir -p wallet-temp
@@ -540,38 +524,58 @@ jobs:
           echo "Decoding wallet files from GitHub Secrets..."
           echo ""
           
+          # Access secrets directly in run block (not via env:) to avoid truncation
+          # Save to files first to preserve exact content
+          echo "${{ secrets.ORACLE_WALLET_CWALLET }}" > wallet-temp/cwallet.b64
+          echo "${{ secrets.ORACLE_WALLET_EWALLET }}" > wallet-temp/ewallet.b64
+          echo "${{ secrets.ORACLE_WALLET_KEYSTORE }}" > wallet-temp/keystore.b64
+          echo "${{ secrets.ORACLE_WALLET_OJDBC }}" > wallet-temp/ojdbc.b64
+          echo "${{ secrets.ORACLE_WALLET_SQLNET }}" > wallet-temp/sqlnet.b64
+          echo "${{ secrets.ORACLE_WALLET_TNSNAMES }}" > wallet-temp/tnsnames.b64
+          echo "${{ secrets.ORACLE_WALLET_TRUSTSTORE }}" > wallet-temp/truststore.b64
+          
           # Helper function to decode and verify
           decode_file() {
-            local secret_value="$1"
+            local input_file="$1"
             local output_file="$2"
             local file_name="$3"
             
-            # Strip whitespace and newlines from secret value
-            # GitHub Secrets might have trailing newlines or spaces
-            secret_value=$(echo -n "$secret_value" | tr -d '\n\r\t ')
+            # Check if input file exists and has content
+            if [ ! -f "$input_file" ]; then
+              echo "❌ Error: $file_name input file not found"
+              return 1
+            fi
+            
+            file_size=$(wc -c < "$input_file")
+            if [ $file_size -le 1 ]; then
+              echo "❌ Error: $file_name secret is empty (file size: $file_size bytes)"
+              return 1
+            fi
+            
+            # Read and clean the secret value (remove trailing newlines that echo might add)
+            secret_value=$(cat "$input_file" | tr -d '\n\r\t ')
             
             # Check if secret is empty after cleaning
             if [ -z "$secret_value" ]; then
-              echo "❌ Error: $file_name secret is empty"
+              echo "❌ Error: $file_name secret is empty after cleaning"
               return 1
             fi
             
             # Validate base64 character set (basic check)
             if ! echo "$secret_value" | grep -qE '^[A-Za-z0-9+/]*={0,2}$'; then
               echo "❌ Error: $file_name contains invalid base64 characters"
-              echo "   Secret length: ${#secret_value} characters"
-              echo "   First 20 chars: ${secret_value:0:20}..."
+              echo "   File size: $file_size bytes"
+              echo "   Cleaned length: ${#secret_value} characters"
               echo "   Re-upload using: ./upload-wallet-to-github.sh"
               return 1
             fi
             
             # Try to decode - suppress stderr but capture exit code
-            # Use -n flag with echo to avoid adding newline
             if ! echo -n "$secret_value" | base64 -d > "$output_file" 2>/dev/null; then
               echo "❌ Error: Failed to decode $file_name"
               echo "   This usually means the secret is not valid base64"
-              echo "   Secret length: ${#secret_value} characters"
-              echo "   First 20 chars: ${secret_value:0:20}..."
+              echo "   File size: $file_size bytes"
+              echo "   Cleaned length: ${#secret_value} characters"
               echo "   Re-upload using: ./upload-wallet-to-github.sh"
               return 1
             fi
@@ -588,23 +592,14 @@ jobs:
             return 0
           }
           
-          # Use environment variables directly (they're already set via env: block above)
-          ORACLE_WALLET_CWALLET_VAL="$ORACLE_WALLET_CWALLET"
-          ORACLE_WALLET_EWALLET_VAL="$ORACLE_WALLET_EWALLET"
-          ORACLE_WALLET_KEYSTORE_VAL="$ORACLE_WALLET_KEYSTORE"
-          ORACLE_WALLET_OJDBC_VAL="$ORACLE_WALLET_OJDBC"
-          ORACLE_WALLET_SQLNET_VAL="$ORACLE_WALLET_SQLNET"
-          ORACLE_WALLET_TNSNAMES_VAL="$ORACLE_WALLET_TNSNAMES"
-          ORACLE_WALLET_TRUSTSTORE_VAL="$ORACLE_WALLET_TRUSTSTORE"
-          
-          # Decode each wallet file
-          decode_file "$ORACLE_WALLET_CWALLET_VAL" wallet-temp/cwallet.sso "cwallet.sso" || exit 1
-          decode_file "$ORACLE_WALLET_EWALLET_VAL" wallet-temp/ewallet.p12 "ewallet.p12" || exit 1
-          decode_file "$ORACLE_WALLET_KEYSTORE_VAL" wallet-temp/keystore.jks "keystore.jks" || exit 1
-          decode_file "$ORACLE_WALLET_OJDBC_VAL" wallet-temp/ojdbc.properties "ojdbc.properties" || exit 1
-          decode_file "$ORACLE_WALLET_SQLNET_VAL" wallet-temp/sqlnet.ora "sqlnet.ora" || exit 1
-          decode_file "$ORACLE_WALLET_TNSNAMES_VAL" wallet-temp/tnsnames.ora "tnsnames.ora" || exit 1
-          decode_file "$ORACLE_WALLET_TRUSTSTORE_VAL" wallet-temp/truststore.jks "truststore.jks" || exit 1
+          # Decode each wallet file from the saved files
+          decode_file wallet-temp/cwallet.b64 wallet-temp/cwallet.sso "cwallet.sso" || exit 1
+          decode_file wallet-temp/ewallet.b64 wallet-temp/ewallet.p12 "ewallet.p12" || exit 1
+          decode_file wallet-temp/keystore.b64 wallet-temp/keystore.jks "keystore.jks" || exit 1
+          decode_file wallet-temp/ojdbc.b64 wallet-temp/ojdbc.properties "ojdbc.properties" || exit 1
+          decode_file wallet-temp/sqlnet.b64 wallet-temp/sqlnet.ora "sqlnet.ora" || exit 1
+          decode_file wallet-temp/tnsnames.b64 wallet-temp/tnsnames.ora "tnsnames.ora" || exit 1
+          decode_file wallet-temp/truststore.b64 wallet-temp/truststore.jks "truststore.jks" || exit 1
           
           echo ""
 
@@ -619,7 +614,7 @@ jobs:
             --from-file=truststore.jks=wallet-temp/truststore.jks \
             --dry-run=client -o yaml | kubectl apply -f -
 
-          rm -rf wallet-temp
+          rm -rf wallet-temp secret-temp
           echo "✅ Oracle wallet secret created successfully"
 
       - name: Create GHCR Image Pull Secret
