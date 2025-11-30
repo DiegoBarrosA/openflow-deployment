@@ -49,7 +49,7 @@
             eksctl
           ];
 
-          # Basic environment variables (no scripts)
+          # Basic environment variables and deploy script
           shellHook = ''
             echo "� OpenFlow Development Environment"
             echo "==================================="
@@ -60,6 +60,28 @@
             echo "🚀 Available tools:"
             echo "  kubectl, oci, mvn, npm, yarn, podman, awscli2, eksctl"
             echo ""
+
+            # Deploy script for secret provisioning and deployment
+            export DEPLOY_SCRIPT="deploy-openflow"
+            cat > $DEPLOY_SCRIPT <<'EOF'
+#!/usr/bin/env bash
+set -e
+echo "Creating oracle-wallet-secret from wallet files..."
+kubectl create secret generic oracle-wallet-secret \
+  --from-file=wallet/cwallet.sso \
+  --from-file=wallet/ewallet.p12 \
+  --from-file=wallet/ewallet.pem \
+  --from-file=wallet/keystore.jks \
+  --from-file=wallet/ojdbc.properties \
+  --from-file=wallet/sqlnet.ora \
+  --from-file=wallet/tnsnames.ora \
+  --from-file=wallet/truststore.jks --dry-run=client -o yaml | kubectl apply -f -
+echo "Applying kube.yaml manifest..."
+kubectl apply -f kube.yaml
+echo "Deployment complete."
+EOF
+            chmod +x $DEPLOY_SCRIPT
+            echo "Run './deploy-openflow' to provision secrets and deploy."
           '';
         };
 
