@@ -175,29 +175,48 @@ jobs:
             local secret_value="$1"
             local secret_name="$2"
             
+            # Check if secret is empty (before cleaning)
+            if [ -z "$secret_value" ]; then
+              echo "❌ $secret_name is empty or not set"
+              echo "   Action: Re-upload this secret using: ./upload-wallet-to-github.sh"
+              return 1
+            fi
+            
             # Strip whitespace and newlines for validation
             local cleaned=$(echo -n "$secret_value" | tr -d '\n\r\t ')
             
-            # Check if secret is empty
+            # Check if secret is empty after cleaning
             if [ -z "$cleaned" ]; then
-              echo "❌ $secret_name is empty"
+              echo "❌ $secret_name is empty (only whitespace)"
+              echo "   Action: Re-upload this secret using: ./upload-wallet-to-github.sh"
+              return 1
+            fi
+            
+            # Check length is reasonable (base64 encoded wallet files should be substantial)
+            # Even small text files like tnsnames.ora should be at least 100+ chars when base64 encoded
+            if [ ${#cleaned} -lt 10 ]; then
+              echo "❌ $secret_name is too short (${#cleaned} characters)"
+              echo "   Expected: At least 100+ characters for base64-encoded wallet files"
+              echo "   This indicates the secret is empty or incorrectly set"
+              echo "   Action: Re-upload this secret using: ./upload-wallet-to-github.sh"
               return 1
             fi
             
             # Check base64 character set (A-Z, a-z, 0-9, +, /, =)
-            # Allow padding with = at the end
+            # Allow padding with = at the end (0-2 characters)
             if ! echo "$cleaned" | grep -qE '^[A-Za-z0-9+/]*={0,2}$'; then
               echo "❌ $secret_name contains invalid base64 characters"
               echo "   Length: ${#cleaned} characters"
-              # Show first 30 chars (masked by GitHub, but helps with debugging)
-              echo "   First chars: ${cleaned:0:30}..."
+              echo "   Base64 should only contain: A-Z, a-z, 0-9, +, /, ="
+              echo "   Action: Re-upload this secret using: ./upload-wallet-to-github.sh"
               return 1
             fi
             
-            # Check length is reasonable (base64 encoded files should be substantial)
-            if [ ${#cleaned} -lt 10 ]; then
-              echo "⚠️  $secret_name is suspiciously short (${#cleaned} chars)"
-              echo "   This might indicate an encoding issue"
+            # Warn if suspiciously short (but still valid format)
+            if [ ${#cleaned} -lt 100 ]; then
+              echo "⚠️  $secret_name is shorter than expected (${#cleaned} chars)"
+              echo "   Most wallet files should be 1000+ characters when base64 encoded"
+              echo "   This might indicate an encoding issue, but format is valid"
             fi
             
             echo "✅ $secret_name format is valid (${#cleaned} characters)"
