@@ -174,14 +174,21 @@ upload_with_gh_cli() {
     
     echo -n "   Uploading $secret_name... "
     
-    # For binary files, we need to base64 encode first
-    # GitHub Secrets API expects the value to be base64 encoded
+    # GitHub CLI can handle binary files directly, but for consistency with workflow
+    # we'll base64 encode the file content and upload it
+    # The workflow will then base64 decode it
+    
     if command -v base64 >/dev/null 2>&1; then
-        # Encode to base64 (no line breaks)
+        # Encode to base64 (no line breaks) - this is what the workflow expects
         encoded=$(base64 -w 0 "$file_path" 2>/dev/null || base64 "$file_path" | tr -d '\n')
         
-        # Upload using gh CLI with --body flag
-        # Capture both stdout and stderr, check exit code
+        if [ -z "$encoded" ]; then
+            echo -e "${RED}❌ Failed to encode file${NC}"
+            return 1
+        fi
+        
+        # Upload using gh CLI - pass base64 encoded value
+        # Use --body flag to pass the encoded value
         OUTPUT=$(echo -n "$encoded" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - 2>&1)
         EXIT_CODE=$?
         
@@ -189,20 +196,19 @@ upload_with_gh_cli() {
             echo -e "${GREEN}✅${NC}"
             return 0
         else
-            # Sometimes gh returns non-zero even on success, check output
-            if echo "$OUTPUT" | grep -qiE "set|updated|created"; then
+            # Check if it actually succeeded (sometimes gh returns non-zero on success)
+            if echo "$OUTPUT" | grep -qiE "set|updated|created|✓"; then
                 echo -e "${GREEN}✅${NC}"
                 return 0
             fi
             echo -e "${RED}❌ Failed${NC}"
-            # Show first line of error if any
             if [ -n "$OUTPUT" ]; then
-                echo "      $(echo "$OUTPUT" | head -1)"
+                echo "      Error: $(echo "$OUTPUT" | head -1)"
             fi
             return 1
         fi
     else
-        echo -e "${RED}❌ base64 not found${NC}"
+        echo -e "${RED}❌ base64 command not found${NC}"
         return 1
     fi
 }
