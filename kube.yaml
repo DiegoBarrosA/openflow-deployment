@@ -15,8 +15,9 @@ spec:
       labels:
         app: openflow-backend
     spec:
-      imagePullSecrets:
-        - name: ghcr-secret
+      # imagePullSecrets not needed for public packages
+      # imagePullSecrets:
+      #   - name: ghcr-secret
       containers:
         - name: backend
           image: ghcr.io/diegobarrosa/openflow-backend:latest
@@ -80,8 +81,9 @@ spec:
       labels:
         app: openflow-frontend
     spec:
-      imagePullSecrets:
-        - name: ghcr-secret
+      # imagePullSecrets not needed for public packages
+      # imagePullSecrets:
+      #   - name: ghcr-secret
       containers:
         - name: frontend
           image: ghcr.io/diegobarrosa/openflow-frontend:latest

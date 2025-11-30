@@ -117,6 +117,7 @@ For local development, you can use H2 (in-memory) or set up a local Oracle datab
 
 - [Installation Guide](docs/installation.md) - Step-by-step EKS deployment
 - [GitHub Secrets Setup](docs/github-secrets-setup.md) - Configure secrets and wallet encoding
+- [Troubleshooting Guide](docs/troubleshooting.md) - Common issues and solutions
 - [Architecture Overview](docs/overview.md) - System architecture and components
 - [Workflows](docs/workflows.md) - CI/CD workflow documentation
 

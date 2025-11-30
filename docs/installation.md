@@ -140,22 +140,43 @@ You can also trigger the workflow manually:
 4. Choose environment (staging/production)
 5. Click **Run workflow**
 
-## Step 5: Verify Deployment
+## Step 5: Connect to EKS Cluster
+
+Before verifying deployment, you need to configure `kubectl` to connect to your EKS cluster.
+
+### Connect to Cluster
+
+```bash
+# Configure kubectl to use your EKS cluster
+aws eks update-kubeconfig --region us-east-1 --name openflow-cluster
+```
+
+**Note:** Replace `us-east-1` with your AWS region and `openflow-cluster` with your cluster name if different.
+
+### Verify Connection
+
+```bash
+# Test connection
+kubectl get nodes
+
+# Should show your EKS nodes
+```
+
+If you see your nodes listed, the connection is successful.
+
+## Step 6: Verify Deployment
 
 ### Check Deployment Status
 
 ```bash
-# Configure kubectl (if not already done)
-aws eks update-kubeconfig --region us-east-1 --name openflow-cluster
-
-# Check pods
-kubectl get pods
+# Check all OpenFlow pods
+kubectl get pods | grep openflow
 
 # Check services
-kubectl get services
+kubectl get services | grep openflow
 
 # Check deployments
-kubectl get deployments
+kubectl get deployments | grep openflow
 ```
 
 ### Get Service URLs
@@ -229,25 +250,49 @@ CORS is currently set to allow all origins (`*`). To restrict:
 
 ```bash
 # Check pod status
+kubectl get pods | grep openflow-backend
+
+# Check detailed pod information
 kubectl describe pod -l app=openflow-backend
 
-# Check logs
+# Check logs (if container started)
 kubectl logs -l app=openflow-backend
 
-# Common issues:
-# - Missing secrets (check GitHub Secrets)
-# - Database connection failure (verify ORACLE_DB_URL)
-# - Wallet mount issues (check oracle-wallet-secret)
+# Common issues and solutions:
+
+# 1. ImagePullBackOff - Cannot pull image from GHCR
+#    See "Image Pull Errors" section above
+
+# 2. Missing secrets
+kubectl get secrets | grep -E "oracle-db-secret|app-secrets|oracle-wallet-secret"
+# If missing, check GitHub Secrets are configured and workflow ran successfully
+
+# 3. Database connection failure
+# Verify ORACLE_DB_URL matches service name in tnsnames.ora
+# Check database credentials in oracle-db-secret
+
+# 4. Wallet mount issues
+kubectl describe pod -l app=openflow-backend | grep -A 5 "oracle-wallet"
+# Verify oracle-wallet-secret exists and has all wallet files
 ```
 
 ### Frontend Pod Not Starting
 
 ```bash
 # Check pod status
+kubectl get pods | grep openflow-frontend
+
+# If pod shows as Running, frontend is working
+# If not, check detailed status:
 kubectl describe pod -l app=openflow-frontend
 
 # Check logs
 kubectl logs -l app=openflow-frontend
+
+# Common issues:
+# - ImagePullBackOff (same as backend - see Image Pull Errors)
+# - Port conflicts (unlikely in Kubernetes)
+# - Resource limits (check if pod is OOMKilled)
 ```
 
 ### Database Connection Issues
@@ -257,15 +302,59 @@ kubectl logs -l app=openflow-frontend
 3. Verify database credentials in `oracle-db-secret`
 4. Check network connectivity from EKS to Oracle Cloud
 
-### Image Pull Errors
+### Image Pull Errors (403 Forbidden from GHCR)
 
-```bash
-# Check image pull secret
-kubectl get secret ghcr-secret
+**Error**: `failed to authorize: failed to fetch oauth token: unexpected status from GET request to https://ghcr.io/token: 403 Forbidden`
 
-# Verify GHCR access
-kubectl describe pod -l app=openflow-backend | grep -i image
-```
+**Cause**: The GitHub Container Registry image is private or the authentication token doesn't have proper permissions.
+
+**Solutions**:
+
+1. **Check if image exists and is accessible:**
+   ```bash
+   # Verify image pull secret exists
+   kubectl get secret ghcr-secret
+   
+   # Check secret details
+   kubectl describe secret ghcr-secret
+   ```
+
+2. **Make the package public (if using public images):**
+   - Go to GitHub → Your repository → Packages
+   - Find the `openflow-backend` package
+   - Go to Package settings → Change visibility to Public
+
+3. **Use a Personal Access Token (PAT) instead of GITHUB_TOKEN:**
+   - Create a PAT with `read:packages` scope
+   - Update the workflow to use PAT instead of GITHUB_TOKEN
+   - Or manually create the secret:
+     ```bash
+     kubectl create secret docker-registry ghcr-secret \
+       --docker-server=ghcr.io \
+       --docker-username=YOUR_GITHUB_USERNAME \
+       --docker-password=YOUR_PAT_TOKEN \
+       --dry-run=client -o yaml | kubectl apply -f -
+     ```
+
+4. **Verify package permissions:**
+   - Ensure the GitHub Actions workflow has permission to read packages
+   - Check repository settings → Actions → General → Workflow permissions
+   - Enable "Read and write permissions" or at least "Read package permissions"
+
+5. **Recreate the image pull secret:**
+   ```bash
+   # Delete existing secret
+   kubectl delete secret ghcr-secret
+   
+   # The workflow will recreate it on next deployment
+   # Or manually create with PAT (see step 3)
+   ```
+
+6. **Check pod events for detailed error:**
+   ```bash
+   kubectl describe pod -l app=openflow-backend
+   # Look for Events section at the bottom
+   ```
 
 ### LoadBalancer Not Provisioning
 
