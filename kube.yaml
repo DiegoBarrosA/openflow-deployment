@@ -45,7 +45,7 @@ spec:
                   name: app-secrets
                   key: jwt-secret
             - name: CORS_ALLOWED_ORIGINS
-              value: "http://localhost:3000"
+              value: "http://localhost:3000,http://k8s-default-openflow-26491559c5-ded9703e290d1034.elb.us-east-1.amazonaws.com"
           volumeMounts:
             - name: oracle-wallet
               mountPath: /app/wallet
