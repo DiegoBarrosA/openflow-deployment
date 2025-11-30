@@ -29,75 +29,44 @@ This creates a free-tier EKS cluster with 1 t3.micro node.
 
 ### 2. Configure Oracle Autonomous Database
 
-1. Create an Oracle Autonomous Database instance
-2. Download the wallet files
-3. Encode wallet files for GitHub Secrets:
-
-```bash
-./encode-wallet.sh
-```
+1. Create an Oracle Autonomous Database instance in Oracle Cloud
+2. Download the wallet files from the Oracle Cloud Console
+3. Encode wallet files for GitHub Secrets (see [GitHub Secrets Setup Guide](docs/github-secrets-setup.md))
 
 ### 3. Configure GitHub Secrets
 
-Add these secrets to your GitHub repository:
+**⚠️ IMPORTANT:** All secrets must be configured in this repository (openflow-deployment).
 
-**AWS Credentials:**
+Navigate to: **Settings → Secrets and variables → Actions**
 
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
+See the comprehensive [GitHub Secrets Setup Guide](docs/github-secrets-setup.md) for detailed instructions.
 
-**Oracle Database:**
+**Required Secrets:**
+- AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
+- Oracle database credentials (`ORACLE_DB_USERNAME`, `ORACLE_DB_PASSWORD`, `ORACLE_DB_URL`)
+- Application secrets (`JWT_SECRET`)
+- Oracle wallet files (7 base64-encoded wallet files)
 
-- `ORACLE_DB_USERNAME`
-- `ORACLE_DB_PASSWORD`
-- `ORACLE_DB_URL`
+### 4. Deploy to EKS
 
-**Application:**
+The deployment workflow (`deploy-on-image-update.yml`) automatically triggers on:
+- Push to `main` branch
+- Manual workflow dispatch
+- `repository_dispatch` events from backend/frontend repos
 
-- `JWT_SECRET`
-
-**Oracle Wallet (Base64 encoded):**
-
-- `ORACLE_WALLET_CWALLET`
-- `ORACLE_WALLET_EWALLET`
-- `ORACLE_WALLET_KEYSTORE`
-- `ORACLE_WALLET_OJDBC`
-- `ORACLE_WALLET_SQLNET`
-- `ORACLE_WALLET_TNSNAMES`
-- `ORACLE_WALLET_TRUSTSTORE`
- 
-Also, to enable automatic deployment when backend/frontend images are built, add the following secrets:
-
-In the **deployment** repository (this repo):
-
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `ORACLE_DB_USERNAME`
-- `ORACLE_DB_PASSWORD`
-- `ORACLE_DB_URL`
-- `JWT_SECRET`
-- `ORACLE_WALLET_CWALLET`, `ORACLE_WALLET_EWALLET`, `ORACLE_WALLET_KEYSTORE`, `ORACLE_WALLET_OJDBC`, `ORACLE_WALLET_SQLNET`, `ORACLE_WALLET_TNSNAMES`, `ORACLE_WALLET_TRUSTSTORE`
-
-In the **backend** and **frontend** repositories (optional but recommended to auto-trigger deploy):
-
-- `DEPLOY_REPO_TOKEN` — a GitHub Personal Access Token (repo scope) used to trigger repository_dispatch on the deployment repo after a successful image push.
-
-Notes:
-
-- `GITHUB_TOKEN` is used to authenticate and push images to GHCR from each repo's workflow.
-- The `DEPLOY_REPO_TOKEN` allows the build workflows to notify the deployment repo to pull the new image and update EKS.
-
-### 4. Deploy
-
-Push to GitHub or manually trigger the deployment workflow:
-
+**Deploy via Git:**
 ```bash
 git add .
 git commit -m "Deploy to AWS EKS"
 git push origin main
 ```
 
-The GitHub Actions workflow will automatically build and deploy to EKS.
+**Or trigger manually:**
+1. Go to **Actions** tab
+2. Select **Deploy (on image update or manual)**
+3. Click **Run workflow**
+
+See [Installation Guide](docs/installation.md) for detailed deployment steps.
 
 ## 📁 Project Structure
 
@@ -144,11 +113,17 @@ For local development, you can use H2 (in-memory) or set up a local Oracle datab
 
 ## 📚 Documentation
 
-Each component has comprehensive documentation:
+### Deployment Documentation
 
-- [Backend Documentation](openflow-backend/docs/)
-- [Frontend Documentation](openflow-frontend/docs/)
-- [Deployment Documentation](openflow-deployment/docs/)
+- [Installation Guide](docs/installation.md) - Step-by-step EKS deployment
+- [GitHub Secrets Setup](docs/github-secrets-setup.md) - Configure secrets and wallet encoding
+- [Architecture Overview](docs/overview.md) - System architecture and components
+- [Workflows](docs/workflows.md) - CI/CD workflow documentation
+
+### Component Documentation
+
+- [Backend Documentation](../openflow-backend/docs/)
+- [Frontend Documentation](../openflow-frontend/docs/)
 
 ## 🔧 Technology Stack
 

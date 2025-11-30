@@ -2,6 +2,13 @@
 
 # Oracle Wallet Encoder for GitHub Secrets
 # This script encodes Oracle wallet files for GitHub Secrets
+#
+# ⚠️  SECURITY WARNING:
+# - This script creates a file containing base64-encoded secrets
+# - NEVER commit wallet-secrets.env or wallet files to version control
+# - Delete wallet-secrets.env immediately after copying values to GitHub Secrets
+# - Keep wallet files secure and delete them after encoding
+# - Add wallet/ and wallet-secrets.env to .gitignore
 
 set -e
 

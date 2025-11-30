@@ -1,233 +1,300 @@
-# Installation Guide
+# EKS Deployment Installation Guide
+
+This guide walks you through deploying OpenFlow to AWS EKS (Elastic Kubernetes Service) using GitHub Actions.
 
 ## Prerequisites
 
-### Required Software
-- **Podman**: Container runtime (rootless)
-- **Git**: Version control (optional)
+### Required Accounts and Services
 
-### System Requirements
-- **Operating System**: Linux (recommended), macOS, or Windows with WSL2
-- **Memory**: Minimum 2GB RAM
-- **Disk Space**: ~2GB for images and containers
-- **Network**: Internet access for pulling base images
+- **AWS Account** with EKS permissions
+- **Oracle Cloud Account** with Autonomous Database instance
+- **GitHub Account** with repository access
+- **kubectl** installed and configured
+- **AWS CLI** installed and configured
 
-## Installation Steps
+### AWS Requirements
 
-### Step 1: Install Podman
+- AWS CLI configured with credentials
+- Permissions to create EKS clusters (or access to existing cluster)
+- Permissions to create LoadBalancers in your AWS region
 
-#### Linux
-```bash
-# Ubuntu/Debian
-sudo apt-get install podman
+### Oracle Database Requirements
 
-# Fedora
-sudo dnf install podman
+- Oracle Autonomous Database instance created
+- Database wallet files downloaded
+- Database credentials (username, password, service name)
 
-# Arch Linux
-sudo pacman -S podman
-```
+## Step 1: Set Up AWS EKS Cluster
 
-#### macOS
-```bash
-brew install podman
-podman machine init
-podman machine start
-```
+### Option A: Use Existing Cluster
 
-### Step 2: Clone Deployment Repository
+If you already have an EKS cluster:
 
 ```bash
-git clone https://github.com/DiegoBarrosA/openflow-deployment.git
-cd openflow-deployment
+# Configure kubectl to use your cluster
+aws eks update-kubeconfig --region us-east-1 --name your-cluster-name
 ```
 
-### Step 3: Build Backend Image
+### Option B: Create New Cluster (Optional)
 
-```bash
-cd ../openflow-backend
-podman build -t openflow-backend:latest .
-```
-
-### Step 4: Build Frontend Image
-
-```bash
-cd ../openflow-frontend
-podman build -t openflow-frontend:latest .
-```
-
-### Step 5: Create Network
-
-```bash
-podman network create openflow-network
-```
-
-### Step 6: Deploy Stack
+The repository includes an optional setup script:
 
 ```bash
 cd openflow-deployment
-podman play kube --network openflow-network --publish 8080:8080 --publish 3000:3000 kube.yaml
+chmod +x setup-aws-eks.sh
+./setup-aws-eks.sh
 ```
 
-## Verification
+This script:
+- Creates a free-tier EKS cluster named `openflow-cluster`
+- Uses 1 t3.micro node (750 free hours/month)
+- Configures kubectl automatically
 
-### Check Pod Status
+**Note:** The cluster name is hardcoded as `openflow-cluster` in the script. If you use a different name, update the `EKS_CLUSTER_NAME` in the GitHub Actions workflow.
+
+## Step 2: Prepare Oracle Database Wallet
+
+1. **Download Wallet from Oracle Cloud Console:**
+   - Navigate to your Autonomous Database
+   - Go to **DB Connection** → **Download Wallet**
+   - Extract the ZIP file to a temporary location
+
+2. **Encode Wallet Files:**
+   ```bash
+   cd openflow-deployment
+   # Create a temporary wallet directory
+   mkdir -p wallet-temp
+   # Extract wallet files to wallet-temp/
+   unzip Wallet_yourdb.zip -d wallet-temp/
+   # Rename to 'wallet' for the script
+   mv wallet-temp wallet
+   # Run encoding script
+   ./encode-wallet.sh
+   ```
+
+3. **Review Generated Secrets:**
+   The script creates `wallet-secrets.env` with base64-encoded values.
+
+   ⚠️ **SECURITY:** Delete `wallet-secrets.env` and the `wallet/` directory immediately after copying values to GitHub Secrets.
+
+## Step 3: Configure GitHub Secrets
+
+Navigate to your GitHub repository: **Settings → Secrets and variables → Actions**
+
+### Required Secrets
+
+#### AWS Credentials
+- `AWS_ACCESS_KEY_ID` - Your AWS access key
+- `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
+- `AWS_SESSION_TOKEN` - (Optional) If using temporary credentials
+
+#### Oracle Database
+- `ORACLE_DB_USERNAME` - Database username
+- `ORACLE_DB_PASSWORD` - Database password
+- `ORACLE_DB_URL` - Database service name (e.g., `s5fjid90p5pnlifv_high`)
+
+#### Application Secrets
+- `JWT_SECRET` - A secure random string for JWT token signing
+  ```bash
+  # Generate a secure JWT secret
+  openssl rand -base64 32
+  ```
+
+#### Oracle Wallet Files (Base64 Encoded)
+Copy the values from `wallet-secrets.env` (generated in Step 2):
+
+- `ORACLE_WALLET_CWALLET` - Base64 encoded `cwallet.sso`
+- `ORACLE_WALLET_EWALLET` - Base64 encoded `ewallet.p12`
+- `ORACLE_WALLET_KEYSTORE` - Base64 encoded `keystore.jks`
+- `ORACLE_WALLET_OJDBC` - Base64 encoded `ojdbc.properties`
+- `ORACLE_WALLET_SQLNET` - Base64 encoded `sqlnet.ora`
+- `ORACLE_WALLET_TNSNAMES` - Base64 encoded `tnsnames.ora`
+- `ORACLE_WALLET_TRUSTSTORE` - Base64 encoded `truststore.jks`
+
+**Note:** The workflow expects these exact secret names. See [GitHub Secrets Setup Guide](github-secrets-setup.md) for detailed instructions.
+
+## Step 4: Deploy to EKS
+
+### Automatic Deployment
+
+The deployment workflow (`deploy-on-image-update.yml`) triggers on:
+- Push to `main` branch
+- Manual workflow dispatch
+- `repository_dispatch` event (from backend/frontend repos)
+
+Simply push your changes:
+
 ```bash
-podman pod ps
+git add .
+git commit -m "Deploy to EKS"
+git push origin main
 ```
 
-### Check Container Status
+### Manual Deployment
+
+You can also trigger the workflow manually:
+
+1. Go to **Actions** tab in GitHub
+2. Select **Deploy (on image update or manual)**
+3. Click **Run workflow**
+4. Choose environment (staging/production)
+5. Click **Run workflow**
+
+## Step 5: Verify Deployment
+
+### Check Deployment Status
+
 ```bash
-podman ps
+# Configure kubectl (if not already done)
+aws eks update-kubeconfig --region us-east-1 --name openflow-cluster
+
+# Check pods
+kubectl get pods
+
+# Check services
+kubectl get services
+
+# Check deployments
+kubectl get deployments
 ```
 
-### Test Backend
-```bash
-curl http://localhost:8080/api/auth/login \
-  -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
-```
+### Get Service URLs
 
-### Test Frontend
 ```bash
-curl http://localhost:3000
+# Backend URL
+kubectl get svc openflow-backend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+
+# Frontend URL
+kubectl get svc openflow-frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 ```
 
 ### View Logs
+
 ```bash
 # Backend logs
-podman logs openflow-backend
+kubectl logs -l app=openflow-backend
 
 # Frontend logs
-podman logs openflow-frontend
+kubectl logs -l app=openflow-frontend
 
-# All pod logs
-podman pod logs openflow
+# Follow logs
+kubectl logs -f deployment/openflow-backend
+```
+
+### Test Application
+
+```bash
+# Test backend API
+curl http://<backend-loadbalancer-url>:8080/api/status
+
+# Test frontend
+curl http://<frontend-loadbalancer-url>
 ```
 
 ## Configuration
 
 ### Environment Variables
 
-Edit `kube.yaml` to modify environment variables:
+The deployment uses Kubernetes secrets for sensitive data. To modify configuration:
 
-```yaml
-env:
-  - name: SPRING_DATASOURCE_URL
-    value: "jdbc:h2:mem:openflowdb"
-  - name: JWT_SECRET
-    value: "your-secret-key"
-  - name: CORS_ALLOWED_ORIGINS
-    value: "http://localhost:3000"
-```
-
-### Port Configuration
-
-Modify port mappings in `podman play kube` command:
-```bash
-podman play kube --publish 8081:8080 --publish 3001:3000 kube.yaml
-```
+1. Update `kube.yaml` environment variables
+2. Commit and push changes
+3. The workflow will redeploy automatically
 
 ### Resource Limits
 
-Modify in `kube.yaml`:
-```yaml
-resources:
-  requests:
-    memory: "512Mi"
-    cpu: "250m"
-  limits:
-    memory: "1Gi"
-    cpu: "500m"
-```
+Default resource limits in `kube.yaml`:
+
+**Backend:**
+- Requests: 512Mi memory, 250m CPU
+- Limits: 1Gi memory, 500m CPU
+
+**Frontend:**
+- Requests: 128Mi memory, 100m CPU
+- Limits: 256Mi memory, 200m CPU
+
+Adjust these in `kube.yaml` based on your needs.
+
+### CORS Configuration
+
+CORS is currently set to allow all origins (`*`). To restrict:
+
+1. Update `CORS_ALLOWED_ORIGINS` in `kube.yaml`
+2. Set to comma-separated list of allowed origins
+3. Redeploy
 
 ## Troubleshooting
 
-### Pod Won't Start
+### Backend Pod Not Starting
+
 ```bash
 # Check pod status
-podman pod ps -a
-
-# Inspect pod
-podman pod inspect openflow
+kubectl describe pod -l app=openflow-backend
 
 # Check logs
-podman pod logs openflow
+kubectl logs -l app=openflow-backend
+
+# Common issues:
+# - Missing secrets (check GitHub Secrets)
+# - Database connection failure (verify ORACLE_DB_URL)
+# - Wallet mount issues (check oracle-wallet-secret)
 ```
 
-### Containers Not Communicating
+### Frontend Pod Not Starting
+
 ```bash
-# Verify network
-podman network inspect openflow-network
+# Check pod status
+kubectl describe pod -l app=openflow-frontend
 
-# Check container network
-podman inspect openflow-backend | grep NetworkMode
+# Check logs
+kubectl logs -l app=openflow-frontend
 ```
 
-### Port Conflicts
+### Database Connection Issues
+
+1. Verify `ORACLE_DB_URL` matches service name in `tnsnames.ora`
+2. Check wallet secret is properly mounted
+3. Verify database credentials in `oracle-db-secret`
+4. Check network connectivity from EKS to Oracle Cloud
+
+### Image Pull Errors
+
 ```bash
-# Find process using port
-lsof -i :8080
-lsof -i :3000
+# Check image pull secret
+kubectl get secret ghcr-secret
 
-# Use different ports
-podman play kube --publish 8081:8080 --publish 3001:3000 kube.yaml
+# Verify GHCR access
+kubectl describe pod -l app=openflow-backend | grep -i image
 ```
 
-### Image Not Found
-```bash
-# List images
-podman images
+### LoadBalancer Not Provisioning
 
-# Rebuild if needed
-cd ../openflow-backend && podman build -t openflow-backend:latest .
-cd ../openflow-frontend && podman build -t openflow-frontend:latest .
-```
+- Check AWS quota for LoadBalancers in your region
+- Verify IAM permissions for ELB service
+- Check AWS console for LoadBalancer creation errors
 
 ## Cleanup
 
-### Stop and Remove Pod
+### Delete Deployment
+
 ```bash
-podman pod stop openflow
-podman pod rm openflow
+# Delete all resources
+kubectl delete -f kube.yaml
+
+# Or delete individually
+kubectl delete deployment openflow-backend openflow-frontend
+kubectl delete service openflow-backend openflow-frontend
+kubectl delete secret oracle-db-secret app-secrets oracle-wallet-secret ghcr-secret
 ```
 
-### Remove Network
+### Delete EKS Cluster (if created by script)
+
 ```bash
-podman network rm openflow-network
+eksctl delete cluster --name openflow-cluster --region us-east-1
 ```
 
-### Remove Images (Optional)
-```bash
-podman rmi openflow-backend:latest
-podman rmi openflow-frontend:latest
-```
+## Next Steps
 
-## Production Deployment
-
-### Considerations
-- Use persistent database (PostgreSQL/MySQL)
-- Set secure JWT secret
-- Configure proper CORS origins
-- Set up monitoring and logging
-- Configure backup strategy
-- Use secrets management
-- Enable HTTPS/TLS
-
-### Production kube.yaml Example
-```yaml
-# Use production database
-env:
-  - name: SPRING_DATASOURCE_URL
-    value: "jdbc:postgresql://db-host:5432/openflow"
-  - name: JWT_SECRET
-    valueFrom:
-      secretKeyRef:
-        name: jwt-secret
-        key: secret
-```
-
-
-
-
+- Review [Architecture Documentation](architecture.md)
+- Check [Workflow Documentation](workflows.md)
+- See [GitHub Secrets Setup Guide](github-secrets-setup.md) for detailed secret configuration
