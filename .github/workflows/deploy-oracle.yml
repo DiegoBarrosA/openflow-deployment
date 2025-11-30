@@ -152,6 +152,16 @@ jobs:
 
       - name: Update deployment images
         run: |
+            # Wait for deployments to exist (timeout ~60s)
+            for i in {1..30}; do
+              if kubectl get deployment openflow-backend >/dev/null 2>&1 && kubectl get deployment openflow-frontend >/dev/null 2>&1; then
+                echo "Deployments found"
+                break
+              fi
+              echo "Waiting for deployments to be created... ($i/30)"
+              sleep 2
+            done
+
             # Determine backend image (prefer build output, fallback to default latest)
             BACKEND_IMG="${{ needs.build-and-push.outputs.backend-image }}"
             if [ -z "$BACKEND_IMG" ]; then
