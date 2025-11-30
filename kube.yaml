@@ -64,6 +64,7 @@ spec:
         - name: oracle-wallet
           secret:
             secretName: oracle-wallet-secret
+            defaultMode: 0444  # Make wallet files readable by all (required for Oracle JDBC)
 ---
 apiVersion: apps/v1
 kind: Deployment

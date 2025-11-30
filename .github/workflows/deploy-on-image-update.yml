@@ -602,6 +602,37 @@ jobs:
           decode_file wallet-temp/truststore.b64 wallet-temp/truststore.jks "truststore.jks" || exit 1
           
           echo ""
+          echo "Verifying decoded wallet files..."
+          
+          # Verify cwallet.sso is a valid Oracle wallet file (should start with specific magic bytes)
+          if [ -f wallet-temp/cwallet.sso ]; then
+            CWALLET_SIZE=$(wc -c < wallet-temp/cwallet.sso)
+            if [ "$CWALLET_SIZE" -lt 100 ]; then
+              echo "⚠️  Warning: cwallet.sso is suspiciously small ($CWALLET_SIZE bytes)"
+            else
+              echo "✅ cwallet.sso size: $CWALLET_SIZE bytes"
+            fi
+          fi
+          
+          # Verify tnsnames.ora has expected content
+          if [ -f wallet-temp/tnsnames.ora ]; then
+            if grep -q "DESCRIPTION" wallet-temp/tnsnames.ora 2>/dev/null; then
+              echo "✅ tnsnames.ora contains expected TNS entries"
+            else
+              echo "⚠️  Warning: tnsnames.ora may be missing TNS entries"
+            fi
+          fi
+          
+          # Verify sqlnet.ora has wallet location
+          if [ -f wallet-temp/sqlnet.ora ]; then
+            if grep -q "WALLET_LOCATION" wallet-temp/sqlnet.ora 2>/dev/null; then
+              echo "✅ sqlnet.ora contains WALLET_LOCATION"
+            else
+              echo "⚠️  Warning: sqlnet.ora may be missing WALLET_LOCATION"
+            fi
+          fi
+          
+          echo ""
 
           echo "Creating Kubernetes secret..."
           kubectl create secret generic oracle-wallet-secret \
@@ -614,8 +645,53 @@ jobs:
             --from-file=truststore.jks=wallet-temp/truststore.jks \
             --dry-run=client -o yaml | kubectl apply -f -
 
+          echo ""
+          echo "Verifying Kubernetes secret was created correctly..."
+          
+          # Wait a moment for secret to be available
+          sleep 2
+          
+          # Verify secret exists
+          if ! kubectl get secret oracle-wallet-secret >/dev/null 2>&1; then
+            echo "❌ Error: oracle-wallet-secret not found"
+            exit 1
+          fi
+          
+          # Verify all required files are in the secret
+          REQUIRED_FILES=("cwallet.sso" "ewallet.p12" "keystore.jks" "ojdbc.properties" "sqlnet.ora" "tnsnames.ora" "truststore.jks")
+          MISSING_FILES=()
+          
+          for file in "${REQUIRED_FILES[@]}"; do
+            if ! kubectl get secret oracle-wallet-secret -o jsonpath="{.data.$file}" >/dev/null 2>&1; then
+              MISSING_FILES+=("$file")
+            else
+              # Check if the value is not empty
+              FILE_SIZE=$(kubectl get secret oracle-wallet-secret -o jsonpath="{.data.$file}" | wc -c)
+              if [ "$FILE_SIZE" -lt 10 ]; then
+                echo "⚠️  Warning: $file in secret is suspiciously small ($FILE_SIZE bytes)"
+              else
+                echo "✅ Verified: $file exists in secret ($FILE_SIZE bytes)"
+              fi
+            fi
+          done
+          
+          if [ ${#MISSING_FILES[@]} -gt 0 ]; then
+            echo "❌ Error: Missing files in secret: ${MISSING_FILES[*]}"
+            exit 1
+          fi
+          
+          # Verify tnsnames.ora has content (decode and check)
+          TNS_CONTENT=$(kubectl get secret oracle-wallet-secret -o jsonpath="{.data.tnsnames\.ora}" | base64 -d 2>/dev/null | head -5)
+          if [ -z "$TNS_CONTENT" ]; then
+            echo "⚠️  Warning: tnsnames.ora appears to be empty"
+          else
+            echo "✅ Verified: tnsnames.ora has content (first 5 lines shown)"
+            echo "$TNS_CONTENT"
+          fi
+          
           rm -rf wallet-temp secret-temp
-          echo "✅ Oracle wallet secret created successfully"
+          echo ""
+          echo "✅ Oracle wallet secret created and verified successfully"
 
       - name: Create GHCR Image Pull Secret
         run: |

@@ -227,8 +227,36 @@ if [ ${#MISSING_FILES[@]} -gt 0 ]; then
 fi
 
 echo ""
-echo "📤 Uploading wallet files to GitHub Secrets..."
+echo "📋 Choose output method:"
+echo ""
+echo "   1) Display secrets for manual copy (recommended if upload fails)"
+echo "   2) Upload to GitHub Secrets automatically"
+echo ""
+read -p "Choose option (1 or 2, default: 1): " OUTPUT_METHOD
+OUTPUT_METHOD=$(echo "$OUTPUT_METHOD" | tr -d '[:space:]')
+OUTPUT_METHOD="${OUTPUT_METHOD:-1}"
+
+if [[ "$OUTPUT_METHOD" == "1" ]]; then
+    echo ""
+    echo "=================================================="
+    echo "📋 SECRET VALUES FOR MANUAL COPY"
+    echo "=================================================="
+    echo ""
+    echo "Copy each secret value below and paste it into GitHub:"
+    echo "Settings → Environments → staging → Secrets → New secret"
+    echo ""
+    echo "⚠️  IMPORTANT: Copy the ENTIRE value (it's a long single line)"
+    echo ""
+fi
+
+echo ""
+echo "📤 Processing wallet files..."
 echo "   Repository: $REPO_OWNER/$REPO_NAME"
+if [ "$OUTPUT_METHOD" == "2" ]; then
+    echo "   Upload method: Automatic"
+else
+    echo "   Upload method: Manual copy (display only)"
+fi
 echo ""
 
 # Function to upload secret using GitHub CLI
@@ -316,6 +344,34 @@ upload_with_gh_cli() {
                 return 1
             fi
             echo "   ✅ Encoding verified (can be decoded)"
+            
+            # If manual copy mode, display the secret value
+            if [ "$OUTPUT_METHOD" == "1" ]; then
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "📋 Secret: $secret_name"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                echo "Copy the ENTIRE value below (it's one long line):"
+                echo ""
+                cat "$TEMP_FILE"
+                echo ""
+                echo ""
+                echo "📍 Where to paste:"
+                if [ "$UPLOAD_TO_ENV" = true ]; then
+                    echo "   GitHub → Settings → Environments → $ENV_NAME → Secrets → New secret"
+                else
+                    echo "   GitHub → Settings → Secrets and variables → Actions → New repository secret"
+                fi
+                echo "   Secret name: $secret_name"
+                echo "   Value: (paste the entire base64 string above)"
+                echo ""
+                echo "Press Enter to continue to next secret..."
+                read -r
+                echo ""
+                rm -f "$TEMP_FILE"
+                return 0
+            fi
             
             echo -n "   Uploading to GitHub Secrets... "
         
@@ -477,38 +533,69 @@ fi
 echo ""
 echo "=================================================="
 
-if [ $SUCCESS_COUNT -gt 0 ]; then
-    echo -e "${GREEN}✅ Successfully uploaded $SUCCESS_COUNT secret(s)${NC}"
-fi
-
-if [ ${#FAILED_SECRETS[@]} -gt 0 ]; then
-    echo -e "${RED}❌ Failed to upload ${#FAILED_SECRETS[@]} secret(s):${NC}"
-    for secret in "${FAILED_SECRETS[@]}"; do
-        echo "   - $secret"
-    done
-fi
-
-echo ""
-echo "📋 Next Steps:"
-echo ""
-if [ "$UPLOAD_TO_ENV" = true ]; then
-    echo "1. Verify secrets in GitHub:"
-    echo "   https://github.com/$REPO_OWNER/$REPO_NAME/settings/environments/$ENV_NAME/secrets"
+if [ "$OUTPUT_METHOD" == "1" ]; then
+    echo -e "${GREEN}✅ All secrets displayed for manual copy${NC}"
     echo ""
-    echo "2. Secrets are set at environment level: $ENV_NAME"
-    echo "   The workflow should now be able to access them"
+    echo "📋 Summary:"
+    echo "   - Total secrets processed: $FOUND_COUNT"
+    echo ""
+    echo "📍 Next Steps:"
+    echo ""
+    if [ "$UPLOAD_TO_ENV" = true ]; then
+        echo "1. Go to: https://github.com/$REPO_OWNER/$REPO_NAME/settings/environments/$ENV_NAME/secrets"
+        echo ""
+        echo "2. For each secret shown above:"
+        echo "   - Click 'New secret'"
+        echo "   - Name: (use the secret name shown, e.g., ORACLE_WALLET_CWALLET)"
+        echo "   - Value: (paste the ENTIRE base64 string - it's one long line)"
+        echo "   - Click 'Add secret'"
+    else
+        echo "1. Go to: https://github.com/$REPO_OWNER/$REPO_NAME/settings/secrets/actions"
+        echo ""
+        echo "2. For each secret shown above:"
+        echo "   - Click 'New repository secret'"
+        echo "   - Name: (use the secret name shown, e.g., ORACLE_WALLET_CWALLET)"
+        echo "   - Value: (paste the ENTIRE base64 string - it's one long line)"
+        echo "   - Click 'Add secret'"
+    fi
+    echo ""
+    echo "3. After adding all secrets, re-run the deployment workflow"
+    echo ""
+    echo -e "${GREEN}✅ Done!${NC}"
 else
-    echo "1. Verify secrets in GitHub:"
-    echo "   https://github.com/$REPO_OWNER/$REPO_NAME/settings/secrets/actions"
+    if [ $SUCCESS_COUNT -gt 0 ]; then
+        echo -e "${GREEN}✅ Successfully uploaded $SUCCESS_COUNT secret(s)${NC}"
+    fi
+
+    if [ ${#FAILED_SECRETS[@]} -gt 0 ]; then
+        echo -e "${RED}❌ Failed to upload ${#FAILED_SECRETS[@]} secret(s):${NC}"
+        for secret in "${FAILED_SECRETS[@]}"; do
+            echo "   - $secret"
+        done
+    fi
+
     echo ""
-    echo "2. ⚠️  If your workflow uses an environment context, you may need to:"
-    echo "   - Copy these secrets to the environment level, OR"
-    echo "   - Remove the environment requirement from the workflow"
+    echo "📋 Next Steps:"
+    echo ""
+    if [ "$UPLOAD_TO_ENV" = true ]; then
+        echo "1. Verify secrets in GitHub:"
+        echo "   https://github.com/$REPO_OWNER/$REPO_NAME/settings/environments/$ENV_NAME/secrets"
+        echo ""
+        echo "2. Secrets are set at environment level: $ENV_NAME"
+        echo "   The workflow should now be able to access them"
+    else
+        echo "1. Verify secrets in GitHub:"
+        echo "   https://github.com/$REPO_OWNER/$REPO_NAME/settings/secrets/actions"
+        echo ""
+        echo "2. ⚠️  If your workflow uses an environment context, you may need to:"
+        echo "   - Copy these secrets to the environment level, OR"
+        echo "   - Remove the environment requirement from the workflow"
+    fi
+    echo ""
+    echo "3. Re-run the deployment workflow to use the new secrets"
+    echo ""
+    echo "4. The workflow will create Kubernetes secrets from GitHub Secrets"
+    echo ""
+    echo -e "${GREEN}✅ Done!${NC}"
 fi
-echo ""
-echo "3. Re-run the deployment workflow to use the new secrets"
-echo ""
-echo "4. The workflow will create Kubernetes secrets from GitHub Secrets"
-echo ""
-echo -e "${GREEN}✅ Done!${NC}"
 
