@@ -94,84 +94,88 @@ jobs:
             --from-literal=jwt-secret='${{ secrets.JWT_SECRET }}' \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Create Oracle Wallet Secret (from GH secrets)
+      - name: Check Wallet Secrets
         run: |
-          set -e
+          # Check if wallet secrets are set (non-empty)
+          MISSING=0
           
-          # Check if wallet secrets are set
-          WALLET_SECRETS=(
-            "ORACLE_WALLET_CWALLET"
-            "ORACLE_WALLET_EWALLET"
-            "ORACLE_WALLET_KEYSTORE"
-            "ORACLE_WALLET_OJDBC"
-            "ORACLE_WALLET_SQLNET"
-            "ORACLE_WALLET_TNSNAMES"
-            "ORACLE_WALLET_TRUSTSTORE"
-          )
+          if [ -z "${{ secrets.ORACLE_WALLET_CWALLET }}" ]; then
+            echo "❌ ORACLE_WALLET_CWALLET is missing or empty"
+            MISSING=1
+          fi
+          if [ -z "${{ secrets.ORACLE_WALLET_EWALLET }}" ]; then
+            echo "❌ ORACLE_WALLET_EWALLET is missing or empty"
+            MISSING=1
+          fi
+          if [ -z "${{ secrets.ORACLE_WALLET_KEYSTORE }}" ]; then
+            echo "❌ ORACLE_WALLET_KEYSTORE is missing or empty"
+            MISSING=1
+          fi
+          if [ -z "${{ secrets.ORACLE_WALLET_OJDBC }}" ]; then
+            echo "❌ ORACLE_WALLET_OJDBC is missing or empty"
+            MISSING=1
+          fi
+          if [ -z "${{ secrets.ORACLE_WALLET_SQLNET }}" ]; then
+            echo "❌ ORACLE_WALLET_SQLNET is missing or empty"
+            MISSING=1
+          fi
+          if [ -z "${{ secrets.ORACLE_WALLET_TNSNAMES }}" ]; then
+            echo "❌ ORACLE_WALLET_TNSNAMES is missing or empty"
+            MISSING=1
+          fi
+          if [ -z "${{ secrets.ORACLE_WALLET_TRUSTSTORE }}" ]; then
+            echo "❌ ORACLE_WALLET_TRUSTSTORE is missing or empty"
+            MISSING=1
+          fi
           
-          MISSING_SECRETS=()
-          for secret in "${WALLET_SECRETS[@]}"; do
-            if [ -z "${!secret}" ]; then
-              MISSING_SECRETS+=("$secret")
-            fi
-          done
-          
-          if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
-            echo "❌ Error: Missing required GitHub Secrets:"
-            for secret in "${MISSING_SECRETS[@]}"; do
-              echo "   - $secret"
-            done
+          if [ $MISSING -eq 1 ]; then
             echo ""
-            echo "Please set these secrets in: Settings → Secrets and variables → Actions"
+            echo "Please set all wallet secrets in: Settings → Secrets and variables → Actions"
             echo "Use ./upload-wallet-to-github.sh to upload wallet files automatically"
             exit 1
           fi
           
+          echo "✅ All wallet secrets are set"
+
+      - name: Create Oracle Wallet Secret (from GH secrets)
+        run: |
+          set -e
           mkdir -p wallet-temp
           
-          # Decode wallet files with error checking
-          echo "Decoding wallet files..."
+          echo "Decoding wallet files from GitHub Secrets..."
           
-          decode_wallet_file() {
-            local secret_name=$1
+          # Decode each wallet file with error checking
+          decode_and_verify() {
+            local secret_value=$1
             local output_file=$2
-            local secret_value="${!secret_name}"
+            local file_name=$3
             
             if [ -z "$secret_value" ]; then
-              echo "❌ Error: $secret_name is empty"
+              echo "❌ Error: Secret value is empty for $file_name"
               return 1
             fi
             
             if ! echo "$secret_value" | base64 -d > "$output_file" 2>/dev/null; then
-              echo "❌ Error: Failed to decode $secret_name (invalid base64 or empty)"
+              echo "❌ Error: Failed to decode $file_name (invalid base64)"
               return 1
             fi
             
             if [ ! -s "$output_file" ]; then
-              echo "❌ Error: Decoded $secret_name is empty"
+              echo "❌ Error: Decoded $file_name is empty"
               return 1
             fi
             
-            echo "✅ Decoded $secret_name"
+            echo "✅ Decoded $file_name"
             return 0
           }
           
-          # Export secrets as environment variables for the function
-          export ORACLE_WALLET_CWALLET='${{ secrets.ORACLE_WALLET_CWALLET }}'
-          export ORACLE_WALLET_EWALLET='${{ secrets.ORACLE_WALLET_EWALLET }}'
-          export ORACLE_WALLET_KEYSTORE='${{ secrets.ORACLE_WALLET_KEYSTORE }}'
-          export ORACLE_WALLET_OJDBC='${{ secrets.ORACLE_WALLET_OJDBC }}'
-          export ORACLE_WALLET_SQLNET='${{ secrets.ORACLE_WALLET_SQLNET }}'
-          export ORACLE_WALLET_TNSNAMES='${{ secrets.ORACLE_WALLET_TNSNAMES }}'
-          export ORACLE_WALLET_TRUSTSTORE='${{ secrets.ORACLE_WALLET_TRUSTSTORE }}'
-          
-          decode_wallet_file ORACLE_WALLET_CWALLET wallet-temp/cwallet.sso || exit 1
-          decode_wallet_file ORACLE_WALLET_EWALLET wallet-temp/ewallet.p12 || exit 1
-          decode_wallet_file ORACLE_WALLET_KEYSTORE wallet-temp/keystore.jks || exit 1
-          decode_wallet_file ORACLE_WALLET_OJDBC wallet-temp/ojdbc.properties || exit 1
-          decode_wallet_file ORACLE_WALLET_SQLNET wallet-temp/sqlnet.ora || exit 1
-          decode_wallet_file ORACLE_WALLET_TNSNAMES wallet-temp/tnsnames.ora || exit 1
-          decode_wallet_file ORACLE_WALLET_TRUSTSTORE wallet-temp/truststore.jks || exit 1
+          decode_and_verify '${{ secrets.ORACLE_WALLET_CWALLET }}' wallet-temp/cwallet.sso "cwallet.sso" || exit 1
+          decode_and_verify '${{ secrets.ORACLE_WALLET_EWALLET }}' wallet-temp/ewallet.p12 "ewallet.p12" || exit 1
+          decode_and_verify '${{ secrets.ORACLE_WALLET_KEYSTORE }}' wallet-temp/keystore.jks "keystore.jks" || exit 1
+          decode_and_verify '${{ secrets.ORACLE_WALLET_OJDBC }}' wallet-temp/ojdbc.properties "ojdbc.properties" || exit 1
+          decode_and_verify '${{ secrets.ORACLE_WALLET_SQLNET }}' wallet-temp/sqlnet.ora "sqlnet.ora" || exit 1
+          decode_and_verify '${{ secrets.ORACLE_WALLET_TNSNAMES }}' wallet-temp/tnsnames.ora "tnsnames.ora" || exit 1
+          decode_and_verify '${{ secrets.ORACLE_WALLET_TRUSTSTORE }}' wallet-temp/truststore.jks "truststore.jks" || exit 1
 
           echo "Creating Kubernetes secret..."
           kubectl create secret generic oracle-wallet-secret \
