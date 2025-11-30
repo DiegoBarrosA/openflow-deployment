@@ -172,13 +172,34 @@ upload_with_gh_cli() {
     local secret_name=$1
     local file_path=$2
     
-    echo -n "   Uploading $secret_name... "
+    echo ""
+    echo -e "${BLUE}📤 Preparing to upload: $secret_name${NC}"
+    echo "   Source file: $file_path"
+    
+    # Show file info
+    if [ -f "$file_path" ]; then
+        file_size=$(wc -c < "$file_path")
+        echo "   File size: $file_size bytes"
+        
+        # Calculate file hash for verification (if available)
+        if command -v md5sum >/dev/null 2>&1; then
+            file_hash=$(md5sum "$file_path" | cut -d' ' -f1)
+            echo "   MD5 hash: $file_hash"
+        elif command -v md5 >/dev/null 2>&1; then
+            file_hash=$(md5 -q "$file_path")
+            echo "   MD5 hash: $file_hash"
+        fi
+    else
+        echo -e "${RED}❌ File not found: $file_path${NC}"
+        return 1
+    fi
     
     # GitHub CLI can handle binary files directly, but for consistency with workflow
     # we'll base64 encode the file content and upload it
     # The workflow will then base64 decode it
     
     if command -v base64 >/dev/null 2>&1; then
+        echo "   Encoding to base64..."
         # Encode to base64 (no line breaks) - this is what the workflow expects
         # Try GNU base64 first (supports -w 0), fallback to BSD base64
         encoded=$(base64 -w 0 "$file_path" 2>/dev/null || base64 "$file_path" | tr -d '\n')
@@ -188,35 +209,46 @@ upload_with_gh_cli() {
             return 1
         fi
         
+        # Show encoded value info
+        encoded_length=${#encoded}
+        echo "   Encoded length: $encoded_length characters"
+        echo "   First 50 chars: ${encoded:0:50}..."
+        echo "   Last 50 chars: ...${encoded: -50}"
+        
         # Verify the encoded value is valid base64 (should only contain A-Z, a-z, 0-9, +, /, =)
         if ! echo "$encoded" | grep -qE '^[A-Za-z0-9+/]*={0,2}$'; then
             echo -e "${RED}❌ Encoded value contains invalid base64 characters${NC}"
             return 1
         fi
+        echo "   ✅ Base64 format is valid"
         
         # Verify we can decode it back (sanity check)
         if ! echo -n "$encoded" | base64 -d >/dev/null 2>&1; then
             echo -e "${RED}❌ Encoded value cannot be decoded (encoding failed)${NC}"
             return 1
         fi
+        echo "   ✅ Encoding verified (can be decoded)"
+        
+        echo -n "   Uploading to GitHub Secrets... "
         
         # Upload using gh CLI - pass base64 encoded value via stdin
         # GitHub CLI encrypts the value before sending to GitHub
         # Use -n flag to avoid adding newline
         if echo -n "$encoded" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - >/dev/null 2>&1; then
-            echo -e "${GREEN}✅${NC}"
+            echo -e "${GREEN}✅ Uploaded${NC}"
             
             # Verify the upload by checking if secret exists
             if gh secret list --repo "$REPO_OWNER/$REPO_NAME" | grep -q "^$secret_name"; then
+                echo -e "   ${GREEN}✅ Verified: Secret exists in GitHub${NC}"
                 return 0
             else
-                echo -e "      ${YELLOW}⚠️  Warning: Secret uploaded but not found in list${NC}"
+                echo -e "   ${YELLOW}⚠️  Warning: Secret uploaded but not found in list${NC}"
                 return 0  # Still consider it success, might be a timing issue
             fi
         else
-            echo -e "${RED}❌ Failed${NC}"
-            echo "      Try running manually:"
-            echo "      echo '<base64-value>' | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --body -"
+            echo -e "${RED}❌ Upload failed${NC}"
+            echo "   Try running manually:"
+            echo "   echo '<base64-value>' | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --body -"
             return 1
         fi
     else

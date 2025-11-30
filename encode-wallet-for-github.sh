@@ -73,8 +73,22 @@ for file in "${!WALLET_FILES[@]}"; do
     if [ -f "$WALLET_DIR/$file" ]; then
         echo -e "${GREEN}📄 Encoding $file...${NC}"
         
+        # Show file info
+        file_size=$(wc -c < "$WALLET_DIR/$file")
+        echo "   File size: $file_size bytes"
+        
+        # Calculate file hash for verification (if available)
+        if command -v md5sum >/dev/null 2>&1; then
+            file_hash=$(md5sum "$WALLET_DIR/$file" | cut -d' ' -f1)
+            echo "   MD5 hash: $file_hash"
+        elif command -v md5 >/dev/null 2>&1; then
+            file_hash=$(md5 -q "$WALLET_DIR/$file")
+            echo "   MD5 hash: $file_hash"
+        fi
+        
         # Encode to base64 (no line breaks)
         if command -v base64 >/dev/null 2>&1; then
+            echo "   Encoding to base64..."
             # Try with -w 0 (no wrap) first (GNU base64)
             # Fallback to BSD base64 and remove newlines
             encoded=$(base64 -w 0 "$WALLET_DIR/$file" 2>/dev/null || base64 "$WALLET_DIR/$file" | tr -d '\n')
@@ -84,17 +98,25 @@ for file in "${!WALLET_FILES[@]}"; do
                 exit 1
             fi
             
+            # Show encoded value info
+            encoded_length=${#encoded}
+            echo "   Encoded length: $encoded_length characters"
+            echo "   First 50 chars: ${encoded:0:50}..."
+            echo "   Last 50 chars: ...${encoded: -50}"
+            
             # Verify the encoded value is valid base64
             if ! echo "$encoded" | grep -qE '^[A-Za-z0-9+/]*={0,2}$'; then
                 echo -e "${RED}❌ Encoded $file contains invalid base64 characters${NC}"
                 exit 1
             fi
+            echo "   ✅ Base64 format is valid"
             
             # Verify we can decode it back (sanity check)
             if ! echo -n "$encoded" | base64 -d >/dev/null 2>&1; then
                 echo -e "${RED}❌ Encoded $file cannot be decoded (encoding failed)${NC}"
                 exit 1
             fi
+            echo "   ✅ Encoding verified (can be decoded)"
         else
             echo -e "${RED}❌ base64 command not found!${NC}"
             exit 1
@@ -105,7 +127,7 @@ for file in "${!WALLET_FILES[@]}"; do
         echo "$secret_name=$encoded" >> "$OUTPUT_FILE"
         echo "" >> "$OUTPUT_FILE"
         
-        echo -e "   ${GREEN}✅${NC} $file → $secret_name"
+        echo -e "   ${GREEN}✅${NC} $file → $secret_name (written to $OUTPUT_FILE)"
         ((FOUND_COUNT++))
     else
         echo -e "${YELLOW}⚠️  $file not found, skipping...${NC}"
