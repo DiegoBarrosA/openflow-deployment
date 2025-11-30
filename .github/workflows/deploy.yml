@@ -7,59 +7,16 @@ on:
 
 jobs:
   deploy-local:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    name: Deploy (disabled - local deployment)
 
-      - name: Checkout backend repo
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/openflow-backend
-          path: openflow-backend
+    on:
+      workflow_dispatch:
 
-      - name: Checkout frontend repo
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/openflow-frontend
-          path: openflow-frontend
-
-      - name: Ensure podman is installed
-        run: |
-          if ! command -v podman >/dev/null 2>&1; then
-            sudo apt-get update && sudo apt-get install -y podman
-          fi
-
-      - name: Build backend image
-        run: |
-          podman build -t openflow-backend:latest ./openflow-backend
-
-      - name: Build frontend image
-        run: |
-          podman build -t openflow-frontend:latest ./openflow-frontend
-
-      - name: Kill any processes on ports 3000/8080
-        run: |
-          sudo fuser -k 3000/tcp || true
-          sudo fuser -k 8080/tcp || true
-
-      - name: Create network
-        run: |
-          podman network create openflow-network || true
-
-      - name: Deploy stack
-        run: |
-          podman play kube --network openflow-network --publish 8080:8080 --publish 3000:3000 kube-test.yaml
-
-      - name: Wait for services
-        run: |
-          sleep 60
-
-      - name: Check pods
-        run: |
-          podman pod ps
-          podman container ls
-
+    jobs:
+      disabled:
+        runs-on: ubuntu-latest
+        if: false
+        steps: []
       - name: Test backend
         run: |
           curl -f http://localhost:8080/api/auth/login -X POST -H "Content-Type: application/json" -d '{"username":"admin","password":"admin123"}' || exit 1
