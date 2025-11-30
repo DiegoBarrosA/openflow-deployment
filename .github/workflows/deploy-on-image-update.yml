@@ -18,8 +18,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  BACKEND_IMAGE: ${{ github.repository_owner }}/openflow-backend
-  FRONTEND_IMAGE: ${{ github.repository_owner }}/openflow-frontend
   AWS_REGION: us-east-1
   EKS_CLUSTER_NAME: openflow-cluster
 
@@ -54,6 +52,13 @@ jobs:
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+
+      - name: Set backend/frontend image env vars (lowercase owner)
+        id: set-images
+        run: |
+          REPO_OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "BACKEND_IMAGE=$REPO_OWNER_LC/openflow-backend" >> $GITHUB_ENV
+          echo "FRONTEND_IMAGE=$REPO_OWNER_LC/openflow-frontend" >> $GITHUB_ENV
 
       - name: Resolve image tags
         run: |

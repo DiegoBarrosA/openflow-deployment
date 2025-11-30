@@ -12,13 +12,10 @@ on:
           - staging
           - production
 
-env:
+
   REGISTRY: ghcr.io
-  BACKEND_IMAGE: ${{ github.repository_owner }}/openflow-backend
-  FRONTEND_IMAGE: ${{ github.repository_owner }}/openflow-frontend
   AWS_REGION: us-east-1
   EKS_CLUSTER_NAME: openflow-cluster
-
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -47,6 +44,13 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set backend/frontend image env vars (lowercase owner)
+        id: set-images
+        run: |
+          REPO_OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "BACKEND_IMAGE=$REPO_OWNER_LC/openflow-backend" >> $GITHUB_ENV
+          echo "FRONTEND_IMAGE=$REPO_OWNER_LC/openflow-frontend" >> $GITHUB_ENV
 
       - name: Set default backend build output
         id: build-backend
