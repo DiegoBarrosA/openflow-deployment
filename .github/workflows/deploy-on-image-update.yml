@@ -94,6 +94,120 @@ jobs:
             --from-literal=jwt-secret='${{ secrets.JWT_SECRET }}' \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Verify Environment Secrets Exist
+        run: |
+          ENV_NAME="${{ github.event.inputs.environment || github.event.client_payload.environment || 'staging' }}"
+          echo "Verifying secrets exist in environment: $ENV_NAME"
+          echo ""
+          
+          if command -v gh >/dev/null 2>&1; then
+            echo "Checking secrets using GitHub CLI..."
+            SECRET_LIST=$(gh secret list --repo ${{ github.repository }} --env "$ENV_NAME" 2>&1)
+            if echo "$SECRET_LIST" | grep -q ORACLE_WALLET; then
+              echo "✅ Found ORACLE_WALLET secrets in environment:"
+              echo "$SECRET_LIST" | grep ORACLE_WALLET
+            else
+              echo "❌ No ORACLE_WALLET secrets found in environment"
+              echo "Full secret list:"
+              echo "$SECRET_LIST"
+            fi
+          else
+            echo "GitHub CLI not available in workflow - install it or check manually:"
+            echo "https://github.com/${{ github.repository }}/settings/environments/$ENV_NAME/secrets"
+          fi
+          echo ""
+
+      - name: Test Environment Secret Access
+        run: |
+          set +e  # Don't fail on errors in this diagnostic step
+          ENV_NAME="${{ github.event.inputs.environment || github.event.client_payload.environment || 'staging' }}"
+          echo "🧪 Testing Environment Secret Access"
+          echo "======================================"
+          echo ""
+          echo "Environment: $ENV_NAME"
+          echo "Repository: ${{ github.repository }}"
+          echo ""
+          
+          # Test 1: Try to access a test secret (if it exists)
+          echo "Test 1: Checking if TEST_SECRET exists and is accessible..."
+          TEST_SECRET_VAL="${{ secrets.TEST_SECRET }}"
+          if [ -z "$TEST_SECRET_VAL" ]; then
+            echo "   ℹ️  TEST_SECRET not set (this is OK - it's just for testing)"
+          else
+            TEST_LEN=${#TEST_SECRET_VAL}
+            echo "   ✅ TEST_SECRET is accessible (length: $TEST_LEN chars)"
+            if [ $TEST_LEN -eq 1 ]; then
+              echo "   ⚠️  WARNING: TEST_SECRET is only 1 character - might indicate access issue"
+            fi
+          fi
+          echo ""
+          
+          # Test 2: Try to access one of the wallet secrets and check its properties
+          echo "Test 2: Testing ORACLE_WALLET_CWALLET access..."
+          WALLET_SECRET_VAL="${{ secrets.ORACLE_WALLET_CWALLET }}"
+          WALLET_LEN=${#WALLET_SECRET_VAL}
+          echo "   Secret length: $WALLET_LEN characters"
+          
+          if [ -z "$WALLET_SECRET_VAL" ]; then
+            echo "   ❌ Secret is empty (null/undefined)"
+          elif [ "$WALLET_SECRET_VAL" = "" ]; then
+            echo "   ❌ Secret is empty string"
+          elif [ $WALLET_LEN -eq 1 ]; then
+            echo "   ⚠️  WARNING: Secret is only 1 character"
+            echo "   This usually means:"
+            echo "   1. Secret value is actually empty in GitHub"
+            echo "   2. Environment protection rules are blocking access"
+            echo "   3. Secret propagation delay (wait 2-3 minutes)"
+            echo "   4. Environment context not properly configured"
+            echo ""
+            echo "   First character (hex): $(echo -n "$WALLET_SECRET_VAL" | od -An -tx1 | tr -d ' \n')"
+            echo "   First character (visible): '$(echo -n "$WALLET_SECRET_VAL" | cat -A)'"
+          elif [ $WALLET_LEN -lt 10 ]; then
+            echo "   ⚠️  WARNING: Secret is suspiciously short ($WALLET_LEN chars)"
+          elif [ $WALLET_LEN -gt 100 ]; then
+            echo "   ✅ Secret appears to have valid length"
+            echo "   First 20 chars (base64 preview): ${WALLET_SECRET_VAL:0:20}..."
+          else
+            echo "   ⚠️  Secret length is $WALLET_LEN (expected 1000+ for wallet files)"
+          fi
+          echo ""
+          
+          # Test 3: Check if we can access secrets at all in this context
+          echo "Test 3: Checking secret access context..."
+          echo "   GITHUB_ENVIRONMENT: ${GITHUB_ENVIRONMENT:-not set}"
+          echo "   Workflow environment variable: $ENV_NAME"
+          if [ "$GITHUB_ENVIRONMENT" != "$ENV_NAME" ] && [ -n "$GITHUB_ENVIRONMENT" ]; then
+            echo "   ⚠️  WARNING: GITHUB_ENVIRONMENT ($GITHUB_ENVIRONMENT) doesn't match expected ($ENV_NAME)"
+          fi
+          echo ""
+          
+          # Test 4: Try to decode a small portion to see if it's valid base64
+          if [ $WALLET_LEN -gt 10 ]; then
+            echo "Test 4: Testing base64 decode of first 100 characters..."
+            FIRST_100="${WALLET_SECRET_VAL:0:100}"
+            if echo -n "$FIRST_100" | base64 -d >/dev/null 2>&1; then
+              echo "   ✅ First 100 chars are valid base64"
+            else
+              echo "   ❌ First 100 chars are NOT valid base64"
+              echo "   This suggests the secret value is corrupted or incorrectly set"
+            fi
+          else
+            echo "Test 4: Skipped (secret too short to test)"
+          fi
+          echo ""
+          
+          echo "======================================"
+          echo "Test Summary:"
+          if [ $WALLET_LEN -gt 1000 ]; then
+            echo "✅ ORACLE_WALLET_CWALLET appears to be accessible and valid"
+          elif [ $WALLET_LEN -gt 10 ]; then
+            echo "⚠️  ORACLE_WALLET_CWALLET is accessible but shorter than expected"
+          else
+            echo "❌ ORACLE_WALLET_CWALLET is not accessible or is empty"
+            echo "   Action required: Check environment secrets in GitHub UI"
+          fi
+          echo ""
+
       - name: Check Wallet Secrets
         run: |
           # Check if wallet secrets are set (non-empty)
@@ -172,14 +286,36 @@ jobs:
           
           # Diagnostic: Check environment context
           echo "🔍 Diagnostic Information:"
-          echo "   Environment: ${{ github.event.inputs.environment || github.event.client_payload.environment || 'staging' }}"
+          ENV_NAME="${{ github.event.inputs.environment || github.event.client_payload.environment || 'staging' }}"
+          echo "   Environment: $ENV_NAME"
           echo "   Repository: ${{ github.repository }}"
+          echo "   Workflow run ID: ${{ github.run_id }}"
           echo ""
           echo "⚠️  IMPORTANT: If this workflow uses an environment (staging/production),"
           echo "   secrets must be set at the ENVIRONMENT level, not just repository level."
           echo "   Go to: Settings → Environments → [environment name] → Secrets"
           echo ""
           echo "Note: Secret values are masked in logs for security"
+          echo ""
+          
+          # Test secret access - check if we can read the length
+          echo "Testing secret access..."
+          TEST_VAL="${{ secrets.ORACLE_WALLET_CWALLET }}"
+          TEST_LEN=${#TEST_VAL}
+          echo "   ORACLE_WALLET_CWALLET length: $TEST_LEN characters"
+          if [ $TEST_LEN -eq 1 ]; then
+            echo "   ⚠️  WARNING: Secret appears to be only 1 character!"
+            echo "   This could mean:"
+            echo "   1. Secret is empty in GitHub (check: https://github.com/${{ github.repository }}/settings/environments/$ENV_NAME/secrets)"
+            echo "   2. Environment protection rules are blocking access"
+            echo "   3. Secret propagation delay (wait 2-3 minutes after upload)"
+            echo "   4. Environment not properly configured"
+            echo ""
+            echo "   Verify secrets exist using:"
+            echo "   gh secret list --repo ${{ github.repository }} --env $ENV_NAME | grep ORACLE_WALLET"
+          elif [ $TEST_LEN -gt 100 ]; then
+            echo "   ✅ Secret appears to have valid length"
+          fi
           echo ""
           
           # Capture secrets into variables first (without quotes around the substitution)
