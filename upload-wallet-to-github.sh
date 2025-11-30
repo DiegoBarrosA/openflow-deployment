@@ -97,6 +97,32 @@ if [[ ! "$REPO_NAME" =~ [Dd]eployment ]]; then
 fi
 
 echo ""
+echo "📋 Where should secrets be uploaded?"
+echo ""
+echo "   The workflow uses an environment context (staging/production)."
+echo "   Secrets MUST be set at the environment level for the workflow to access them."
+echo ""
+echo "   1) Environment level (recommended for workflows with environments)"
+echo "   2) Repository level (if workflow doesn't use environments)"
+echo ""
+read -p "Choose option (1 or 2, default: 1): " SECRET_LOCATION
+echo ""
+
+if [[ "$SECRET_LOCATION" == "2" ]]; then
+    UPLOAD_TO_ENV=false
+    ENV_NAME=""
+    echo -e "${YELLOW}⚠️  Note: If your workflow uses an environment, repository-level secrets won't be accessible${NC}"
+    echo ""
+else
+    UPLOAD_TO_ENV=true
+    echo "Which environment should secrets be uploaded to?"
+    read -p "Environment name (staging/production, default: staging): " ENV_NAME
+    ENV_NAME="${ENV_NAME:-staging}"
+    echo -e "${GREEN}✅ Will upload to environment: $ENV_NAME${NC}"
+    echo ""
+fi
+
+echo ""
 echo -e "${YELLOW}⚠️  SECURITY WARNING:${NC}"
 echo "   - Wallet files will be uploaded to GitHub Secrets"
 echo "   - They will be encrypted by GitHub"
@@ -234,22 +260,44 @@ upload_with_gh_cli() {
         # Upload using gh CLI - pass base64 encoded value via stdin
         # GitHub CLI encrypts the value before sending to GitHub
         # Use -n flag to avoid adding newline
-        if echo -n "$encoded" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - >/dev/null 2>&1; then
-            echo -e "${GREEN}✅ Uploaded${NC}"
-            
-            # Verify the upload by checking if secret exists
-            if gh secret list --repo "$REPO_OWNER/$REPO_NAME" | grep -q "^$secret_name"; then
-                echo -e "   ${GREEN}✅ Verified: Secret exists in GitHub${NC}"
-                return 0
+        if [ "$UPLOAD_TO_ENV" = true ]; then
+            # Upload to environment level
+            if echo -n "$encoded" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --env "$ENV_NAME" --body - >/dev/null 2>&1; then
+                echo -e "${GREEN}✅ Uploaded to environment: $ENV_NAME${NC}"
+                
+                # Verify the upload by checking if secret exists
+                if gh secret list --repo "$REPO_OWNER/$REPO_NAME" --env "$ENV_NAME" | grep -q "^$secret_name"; then
+                    echo -e "   ${GREEN}✅ Verified: Secret exists in environment $ENV_NAME${NC}"
+                    return 0
+                else
+                    echo -e "   ${YELLOW}⚠️  Warning: Secret uploaded but not found in list${NC}"
+                    return 0  # Still consider it success, might be a timing issue
+                fi
             else
-                echo -e "   ${YELLOW}⚠️  Warning: Secret uploaded but not found in list${NC}"
-                return 0  # Still consider it success, might be a timing issue
+                echo -e "${RED}❌ Upload failed${NC}"
+                echo "   Try running manually:"
+                echo "   echo '<base64-value>' | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --env $ENV_NAME --body -"
+                return 1
             fi
         else
-            echo -e "${RED}❌ Upload failed${NC}"
-            echo "   Try running manually:"
-            echo "   echo '<base64-value>' | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --body -"
-            return 1
+            # Upload to repository level
+            if echo -n "$encoded" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - >/dev/null 2>&1; then
+                echo -e "${GREEN}✅ Uploaded to repository${NC}"
+                
+                # Verify the upload by checking if secret exists
+                if gh secret list --repo "$REPO_OWNER/$REPO_NAME" | grep -q "^$secret_name"; then
+                    echo -e "   ${GREEN}✅ Verified: Secret exists in repository${NC}"
+                    return 0
+                else
+                    echo -e "   ${YELLOW}⚠️  Warning: Secret uploaded but not found in list${NC}"
+                    return 0  # Still consider it success, might be a timing issue
+                fi
+            else
+                echo -e "${RED}❌ Upload failed${NC}"
+                echo "   Try running manually:"
+                echo "   echo '<base64-value>' | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --body -"
+                return 1
+            fi
         fi
     else
         echo -e "${RED}❌ base64 command not found${NC}"
@@ -367,12 +415,24 @@ fi
 echo ""
 echo "📋 Next Steps:"
 echo ""
-echo "1. Verify secrets in GitHub:"
-echo "   https://github.com/$REPO_OWNER/$REPO_NAME/settings/secrets/actions"
+if [ "$UPLOAD_TO_ENV" = true ]; then
+    echo "1. Verify secrets in GitHub:"
+    echo "   https://github.com/$REPO_OWNER/$REPO_NAME/settings/environments/$ENV_NAME/secrets"
+    echo ""
+    echo "2. Secrets are set at environment level: $ENV_NAME"
+    echo "   The workflow should now be able to access them"
+else
+    echo "1. Verify secrets in GitHub:"
+    echo "   https://github.com/$REPO_OWNER/$REPO_NAME/settings/secrets/actions"
+    echo ""
+    echo "2. ⚠️  If your workflow uses an environment context, you may need to:"
+    echo "   - Copy these secrets to the environment level, OR"
+    echo "   - Remove the environment requirement from the workflow"
+fi
 echo ""
-echo "2. Re-run the deployment workflow to use the new secrets"
+echo "3. Re-run the deployment workflow to use the new secrets"
 echo ""
-echo "3. The workflow will create Kubernetes secrets from GitHub Secrets"
+echo "4. The workflow will create Kubernetes secrets from GitHub Secrets"
 echo ""
 echo -e "${GREEN}✅ Done!${NC}"
 
