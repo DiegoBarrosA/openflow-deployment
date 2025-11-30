@@ -259,10 +259,22 @@ upload_with_gh_cli() {
         
         # Upload using gh CLI - pass base64 encoded value via stdin
         # GitHub CLI encrypts the value before sending to GitHub
-        # Use -n flag to avoid adding newline
+        # Use printf instead of echo -n for better reliability with long strings
+        # Write to temp file first to ensure we have the full value, then pipe it
+        TEMP_FILE=$(mktemp)
+        printf '%s' "$encoded" > "$TEMP_FILE"
+        
+        # Verify the file was written correctly
+        FILE_SIZE=$(wc -c < "$TEMP_FILE")
+        if [ "$FILE_SIZE" -ne "$encoded_length" ]; then
+            echo -e "${RED}❌ File write verification failed (expected $encoded_length, got $FILE_SIZE)${NC}"
+            rm -f "$TEMP_FILE"
+            return 1
+        fi
+        
         if [ "$UPLOAD_TO_ENV" = true ]; then
-            # Upload to environment level
-            if echo -n "$encoded" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --env "$ENV_NAME" --body - >/dev/null 2>&1; then
+            # Upload to environment level - pipe from file to avoid shell variable size limits
+            if cat "$TEMP_FILE" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --env "$ENV_NAME" --body - >/dev/null 2>&1; then
                 echo -e "${GREEN}✅ Uploaded to environment: $ENV_NAME${NC}"
                 
                 # Verify the upload by checking if secret exists
@@ -276,12 +288,13 @@ upload_with_gh_cli() {
             else
                 echo -e "${RED}❌ Upload failed${NC}"
                 echo "   Try running manually:"
-                echo "   echo '<base64-value>' | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --env $ENV_NAME --body -"
+                echo "   cat <file> | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --env $ENV_NAME --body -"
+                rm -f "$TEMP_FILE"
                 return 1
             fi
         else
-            # Upload to repository level
-            if echo -n "$encoded" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - >/dev/null 2>&1; then
+            # Upload to repository level - pipe from file
+            if cat "$TEMP_FILE" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - >/dev/null 2>&1; then
                 echo -e "${GREEN}✅ Uploaded to repository${NC}"
                 
                 # Verify the upload by checking if secret exists
@@ -295,10 +308,14 @@ upload_with_gh_cli() {
             else
                 echo -e "${RED}❌ Upload failed${NC}"
                 echo "   Try running manually:"
-                echo "   echo '<base64-value>' | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --body -"
+                echo "   cat <file> | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --body -"
+                rm -f "$TEMP_FILE"
                 return 1
             fi
         fi
+        
+        # Clean up temp file
+        rm -f "$TEMP_FILE"
     else
         echo -e "${RED}❌ base64 command not found${NC}"
         return 1
