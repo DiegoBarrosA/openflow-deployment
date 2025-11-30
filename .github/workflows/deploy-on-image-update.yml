@@ -169,6 +169,16 @@ jobs:
           set -e
           echo "Validating wallet secrets format (base64 character set)..."
           echo ""
+          
+          # Diagnostic: Check environment context
+          echo "🔍 Diagnostic Information:"
+          echo "   Environment: ${{ github.event.inputs.environment || github.event.client_payload.environment || 'staging' }}"
+          echo "   Repository: ${{ github.repository }}"
+          echo ""
+          echo "⚠️  IMPORTANT: If this workflow uses an environment (staging/production),"
+          echo "   secrets must be set at the ENVIRONMENT level, not just repository level."
+          echo "   Go to: Settings → Environments → [environment name] → Secrets"
+          echo ""
           echo "Note: Secret values are masked in logs for security"
           echo ""
           
@@ -181,6 +191,17 @@ jobs:
           ORACLE_WALLET_SQLNET_VAL="${{ secrets.ORACLE_WALLET_SQLNET }}"
           ORACLE_WALLET_TNSNAMES_VAL="${{ secrets.ORACLE_WALLET_TNSNAMES }}"
           ORACLE_WALLET_TRUSTSTORE_VAL="${{ secrets.ORACLE_WALLET_TRUSTSTORE }}"
+          
+          # Diagnostic: Show raw lengths (before cleaning) to help debug
+          echo "Raw secret lengths (before cleaning):"
+          echo "   ORACLE_WALLET_CWALLET: ${#ORACLE_WALLET_CWALLET_VAL} chars"
+          echo "   ORACLE_WALLET_EWALLET: ${#ORACLE_WALLET_EWALLET_VAL} chars"
+          echo "   ORACLE_WALLET_KEYSTORE: ${#ORACLE_WALLET_KEYSTORE_VAL} chars"
+          echo "   ORACLE_WALLET_OJDBC: ${#ORACLE_WALLET_OJDBC_VAL} chars"
+          echo "   ORACLE_WALLET_SQLNET: ${#ORACLE_WALLET_SQLNET_VAL} chars"
+          echo "   ORACLE_WALLET_TNSNAMES: ${#ORACLE_WALLET_TNSNAMES_VAL} chars"
+          echo "   ORACLE_WALLET_TRUSTSTORE: ${#ORACLE_WALLET_TRUSTSTORE_VAL} chars"
+          echo ""
           
           # Helper function to validate base64 format
           validate_base64() {
@@ -250,10 +271,25 @@ jobs:
           if [ $VALIDATION_OK -eq 0 ]; then
             echo "❌ Some wallet secrets have invalid format"
             echo ""
-            echo "To fix this:"
-            echo "1. Re-upload wallet secrets using: ./upload-wallet-to-github.sh"
-            echo "2. Ensure wallet files are valid before encoding"
-            echo "3. Check that encoding script uses: base64 -w 0 (GNU) or base64 | tr -d '\\n' (BSD)"
+            echo "🔧 Troubleshooting Steps:"
+            echo ""
+            echo "1. Check where secrets are set:"
+            echo "   - Repository level: Settings → Secrets and variables → Actions"
+            echo "   - Environment level: Settings → Environments → [environment] → Secrets"
+            echo ""
+            echo "2. If using environment (staging/production), secrets MUST be set at environment level"
+            echo "   Current environment: ${{ github.event.inputs.environment || github.event.client_payload.environment || 'staging' }}"
+            echo ""
+            echo "3. Re-upload wallet secrets:"
+            echo "   ./upload-wallet-to-github.sh"
+            echo "   (This uploads to repository level - you may need to copy to environment level)"
+            echo ""
+            echo "4. Verify secrets exist:"
+            echo "   ./verify-wallet-secrets.sh"
+            echo ""
+            echo "5. If secrets are at repository level but workflow uses environment:"
+            echo "   - Copy secrets from repository to environment level, OR"
+            echo "   - Remove environment requirement from workflow"
             exit 1
           fi
           
