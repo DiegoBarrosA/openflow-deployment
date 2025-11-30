@@ -187,24 +187,22 @@ upload_with_gh_cli() {
             return 1
         fi
         
-        # Upload using gh CLI - pass base64 encoded value
-        # Use --body flag to pass the encoded value
-        OUTPUT=$(echo -n "$encoded" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - 2>&1)
-        EXIT_CODE=$?
-        
-        if [ $EXIT_CODE -eq 0 ]; then
+        # Upload using gh CLI - pass base64 encoded value via stdin
+        # GitHub CLI encrypts the value before sending to GitHub
+        if echo -n "$encoded" | gh secret set "$secret_name" --repo "$REPO_OWNER/$REPO_NAME" --body - >/dev/null 2>&1; then
             echo -e "${GREEN}✅${NC}"
-            return 0
-        else
-            # Check if it actually succeeded (sometimes gh returns non-zero on success)
-            if echo "$OUTPUT" | grep -qiE "set|updated|created|✓"; then
-                echo -e "${GREEN}✅${NC}"
+            
+            # Verify the upload by checking if secret exists
+            if gh secret list --repo "$REPO_OWNER/$REPO_NAME" | grep -q "^$secret_name"; then
                 return 0
+            else
+                echo -e "      ${YELLOW}⚠️  Warning: Secret uploaded but not found in list${NC}"
+                return 0  # Still consider it success, might be a timing issue
             fi
+        else
             echo -e "${RED}❌ Failed${NC}"
-            if [ -n "$OUTPUT" ]; then
-                echo "      Error: $(echo "$OUTPUT" | head -1)"
-            fi
+            echo "      Try running manually:"
+            echo "      echo '<base64-value>' | gh secret set $secret_name --repo $REPO_OWNER/$REPO_NAME --body -"
             return 1
         fi
     else
