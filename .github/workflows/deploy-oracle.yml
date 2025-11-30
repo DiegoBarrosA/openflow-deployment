@@ -50,6 +50,7 @@ jobs:
 
   deploy-to-eks:
     runs-on: ubuntu-latest
+    needs: build-and-push
     environment: ${{ inputs.environment }}
     steps:
       - name: Checkout code
