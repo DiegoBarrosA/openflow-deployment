@@ -94,26 +94,57 @@ jobs:
             --from-literal=jwt-secret='${{ secrets.JWT_SECRET }}' \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Install GitHub CLI
+        run: |
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "Installing GitHub CLI..."
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update
+            sudo apt install gh -y
+          fi
+          gh --version
+
       - name: Verify Environment Secrets Exist
         run: |
+          set +e  # Don't fail if GitHub CLI commands fail
           ENV_NAME="${{ github.event.inputs.environment || github.event.client_payload.environment || 'staging' }}"
           echo "Verifying secrets exist in environment: $ENV_NAME"
           echo ""
           
           if command -v gh >/dev/null 2>&1; then
+            echo "Authenticating GitHub CLI with GITHUB_TOKEN..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token 2>&1 || echo "Note: GitHub CLI auth may not be needed in workflow context"
+            echo ""
+            
             echo "Checking secrets using GitHub CLI..."
             SECRET_LIST=$(gh secret list --repo ${{ github.repository }} --env "$ENV_NAME" 2>&1)
-            if echo "$SECRET_LIST" | grep -q ORACLE_WALLET; then
-              echo "✅ Found ORACLE_WALLET secrets in environment:"
-              echo "$SECRET_LIST" | grep ORACLE_WALLET
+            EXIT_CODE=$?
+            
+            if [ $EXIT_CODE -eq 0 ]; then
+              if echo "$SECRET_LIST" | grep -q ORACLE_WALLET; then
+                echo "✅ Found ORACLE_WALLET secrets in environment:"
+                echo "$SECRET_LIST" | grep ORACLE_WALLET
+                WALLET_COUNT=$(echo "$SECRET_LIST" | grep -c ORACLE_WALLET || echo "0")
+                echo "   Total ORACLE_WALLET secrets: $WALLET_COUNT (expected: 7)"
+              else
+                echo "❌ No ORACLE_WALLET secrets found in environment"
+                echo "Full secret list:"
+                echo "$SECRET_LIST"
+              fi
             else
-              echo "❌ No ORACLE_WALLET secrets found in environment"
-              echo "Full secret list:"
-              echo "$SECRET_LIST"
+              echo "⚠️  GitHub CLI command failed (exit code: $EXIT_CODE)"
+              echo "   This might be due to permissions or authentication"
+              echo "   Output: $SECRET_LIST"
+              echo ""
+              echo "   You can verify manually at:"
+              echo "   https://github.com/${{ github.repository }}/settings/environments/$ENV_NAME/secrets"
             fi
           else
-            echo "GitHub CLI not available in workflow - install it or check manually:"
-            echo "https://github.com/${{ github.repository }}/settings/environments/$ENV_NAME/secrets"
+            echo "⚠️  GitHub CLI not available in workflow"
+            echo "   Verify secrets manually at:"
+            echo "   https://github.com/${{ github.repository }}/settings/environments/$ENV_NAME/secrets"
           fi
           echo ""
 
