@@ -5,7 +5,15 @@ on:
     branches: [main]
   workflow_dispatch:
 
+jobs:
+  deploy-local:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Kill any processes on ports 3000/8080
+        run: |
           sudo fuser -k 3000/tcp || true
           sudo fuser -k 8080/tcp || true
 
