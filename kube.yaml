@@ -45,8 +45,11 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: jwt-secret
+            # CORS_ALLOWED_ORIGINS is dynamically set by the deployment workflow
+            # to the frontend LoadBalancer URL after services are created
+            # If not set by workflow, will default to http://localhost:3000 (from application.properties)
             - name: CORS_ALLOWED_ORIGINS
-              value: "*"
+              value: "http://localhost:3000"  # Default for local development, will be overridden by workflow
             - name: TNS_ADMIN
               value: /app/wallet
             # Java system properties for Oracle wallet

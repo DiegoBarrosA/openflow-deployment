@@ -735,7 +735,50 @@ jobs:
           kubectl rollout status deployment/openflow-backend --timeout=600s || true
           kubectl rollout status deployment/openflow-frontend --timeout=600s || true
 
+      - name: Wait for LoadBalancer external IPs
+        run: |
+          echo "Waiting for frontend LoadBalancer to get external IP..."
+          FRONTEND_HOSTNAME=""
+          for i in {1..60}; do
+            FRONTEND_HOSTNAME=$(kubectl get svc openflow-frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+            if [ -n "$FRONTEND_HOSTNAME" ] && [ "$FRONTEND_HOSTNAME" != "null" ] && [ "$FRONTEND_HOSTNAME" != "" ]; then
+              echo "Frontend LoadBalancer ready: $FRONTEND_HOSTNAME"
+              echo "FRONTEND_URL=http://$FRONTEND_HOSTNAME" >> $GITHUB_ENV
+              break
+            fi
+            echo "Waiting for frontend LoadBalancer... ($i/60)"
+            sleep 5
+          done
+          
+          if [ -z "$FRONTEND_HOSTNAME" ] || [ "$FRONTEND_HOSTNAME" == "null" ] || [ "$FRONTEND_HOSTNAME" == "" ]; then
+            echo "❌ Error: Frontend LoadBalancer did not get external IP within timeout (5 minutes)"
+            echo "Cannot configure CORS without frontend URL. Please check LoadBalancer status."
+            exit 1
+          fi
+
+      - name: Update backend CORS configuration
+        run: |
+          if [ -z "$FRONTEND_URL" ]; then
+            echo "❌ Error: FRONTEND_URL is not set"
+            exit 1
+          fi
+          
+          echo "Updating backend CORS_ALLOWED_ORIGINS to: $FRONTEND_URL"
+          
+          # Get current deployment and update the environment variable
+          kubectl set env deployment/openflow-backend CORS_ALLOWED_ORIGINS="$FRONTEND_URL" || true
+          
+          echo "Waiting for backend deployment to update..."
+          kubectl rollout status deployment/openflow-backend --timeout=300s || true
+          
+          echo "✅ Backend CORS configuration updated to frontend URL: $FRONTEND_URL"
+
       - name: Get service URLs
         run: |
-          echo "Backend URL: http://$(kubectl get svc openflow-backend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'):8080"
-          echo "Frontend URL: http://$(kubectl get svc openflow-frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+          BACKEND_URL=$(kubectl get svc openflow-backend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
+          FRONTEND_URL=$(kubectl get svc openflow-frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
+          echo "Backend URL: http://${BACKEND_URL}:8080"
+          echo "Frontend URL: http://${FRONTEND_URL}"
+          echo ""
+          echo "CORS Configuration:"
+          kubectl get deployment openflow-backend -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="CORS_ALLOWED_ORIGINS")].value}' && echo
