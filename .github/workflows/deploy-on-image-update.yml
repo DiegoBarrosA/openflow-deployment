@@ -94,6 +94,17 @@ jobs:
             --from-literal=jwt-secret='${{ secrets.JWT_SECRET }}' \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create Azure AD Secret
+        run: |
+          kubectl create secret generic azure-ad-secret \
+            --from-literal=tenant-id='${{ secrets.AZURE_TENANT_ID }}' \
+            --from-literal=client-id='${{ secrets.AZURE_CLIENT_ID }}' \
+            --from-literal=client-secret='${{ secrets.AZURE_CLIENT_SECRET }}' \
+            --from-literal=issuer-uri='${{ secrets.AZURE_ISSUER_URI }}' \
+            --from-literal=jwk-set-uri='${{ secrets.AZURE_JWK_SET_URI }}' \
+            --from-literal=auth-mode='${{ secrets.AUTH_MODE }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Install GitHub CLI
         run: |
           if ! command -v gh >/dev/null 2>&1; then
@@ -359,6 +370,15 @@ jobs:
           
           echo ""
           echo "✅ All wallet secrets are set"
+
+      - name: Validate Azure AD Secrets
+        run: |
+          echo "Validating Azure AD secrets..."
+          [ -z "${{ secrets.AZURE_TENANT_ID }}" ] && echo "❌ AZURE_TENANT_ID missing" && exit 1
+          [ -z "${{ secrets.AZURE_CLIENT_ID }}" ] && echo "❌ AZURE_CLIENT_ID missing" && exit 1
+          [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ] && echo "❌ AZURE_CLIENT_SECRET missing" && exit 1
+          [ -z "${{ secrets.AZURE_ISSUER_URI }}" ] && echo "❌ AZURE_ISSUER_URI missing" && exit 1
+          echo "✅ All Azure AD secrets are set"
 
       - name: Validate Wallet Secrets Format
         run: |
@@ -714,6 +734,7 @@ jobs:
       - name: Deploy to EKS
         run: |
           kubectl apply -f kube.yaml
+          kubectl apply -f kube-ingress.yaml
 
       - name: Update deployment images
         run: |
@@ -735,26 +756,48 @@ jobs:
           kubectl rollout status deployment/openflow-backend --timeout=600s || true
           kubectl rollout status deployment/openflow-frontend --timeout=600s || true
 
-      - name: Wait for LoadBalancer external IPs
+      - name: Wait for NLB Services to be ready
         run: |
-          echo "Waiting for frontend LoadBalancer to get external IP..."
-          FRONTEND_HOSTNAME=""
+          echo "Waiting for NLB Services to get external hostnames..."
+          
+          # Wait for frontend NLB
+          FRONTEND_NLB=""
           for i in {1..60}; do
-            FRONTEND_HOSTNAME=$(kubectl get svc openflow-frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
-            if [ -n "$FRONTEND_HOSTNAME" ] && [ "$FRONTEND_HOSTNAME" != "null" ] && [ "$FRONTEND_HOSTNAME" != "" ]; then
-              echo "Frontend LoadBalancer ready: $FRONTEND_HOSTNAME"
-              echo "FRONTEND_URL=http://$FRONTEND_HOSTNAME" >> $GITHUB_ENV
+            FRONTEND_NLB=$(kubectl get svc openflow-frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+            if [ -n "$FRONTEND_NLB" ] && [ "$FRONTEND_NLB" != "null" ]; then
+              echo "✅ Frontend NLB ready: $FRONTEND_NLB"
               break
             fi
-            echo "Waiting for frontend LoadBalancer... ($i/60)"
+            echo "Waiting for frontend NLB... ($i/60)"
             sleep 5
           done
           
-          if [ -z "$FRONTEND_HOSTNAME" ] || [ "$FRONTEND_HOSTNAME" == "null" ] || [ "$FRONTEND_HOSTNAME" == "" ]; then
-            echo "❌ Error: Frontend LoadBalancer did not get external IP within timeout (5 minutes)"
-            echo "Cannot configure CORS without frontend URL. Please check LoadBalancer status."
-            exit 1
+          # Wait for backend NLB
+          BACKEND_NLB=""
+          for i in {1..60}; do
+            BACKEND_NLB=$(kubectl get svc openflow-backend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+            if [ -n "$BACKEND_NLB" ] && [ "$BACKEND_NLB" != "null" ]; then
+              echo "✅ Backend NLB ready: $BACKEND_NLB"
+              break
+            fi
+            echo "Waiting for backend NLB... ($i/60)"
+            sleep 5
+          done
+          
+          # Set environment variables
+          echo "FRONTEND_NLB=$FRONTEND_NLB" >> $GITHUB_ENV
+          echo "BACKEND_NLB=$BACKEND_NLB" >> $GITHUB_ENV
+          echo "FRONTEND_URL=https://app.openflow.world" >> $GITHUB_ENV
+          echo "BACKEND_URL=https://api.openflow.world" >> $GITHUB_ENV
+          
+          if [ -n "$FRONTEND_NLB" ] && [ -n "$BACKEND_NLB" ]; then
+            echo "NLB_READY=true" >> $GITHUB_ENV
+          else
+            echo "⚠️  Warning: One or more NLBs did not get hostname within timeout"
+            echo "NLB_READY=false" >> $GITHUB_ENV
           fi
+          
+          echo ""
 
       - name: Update backend CORS configuration
         run: |
@@ -771,14 +814,54 @@ jobs:
           echo "Waiting for backend deployment to update..."
           kubectl rollout status deployment/openflow-backend --timeout=300s || true
           
-          echo "✅ Backend CORS configuration updated to frontend URL: $FRONTEND_URL"
+          echo "✅ Backend CORS configuration updated to: $FRONTEND_URL"
+
+      - name: Update Cloudflare DNS Records
+        if: env.NLB_READY == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ZONE_ID" ]; then
+            echo "⚠️  Cloudflare credentials not set - skipping DNS update"
+            echo "Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID as GitHub Secrets to enable automatic DNS updates"
+            echo ""
+            echo "📋 Manual DNS Configuration Required in Cloudflare:"
+            echo "  - app.openflow.world -> $FRONTEND_NLB (proxied ON)"
+            echo "  - api.openflow.world -> $BACKEND_NLB (proxied ON)"
+          else
+            # Install jq if not available
+            if ! command -v jq &> /dev/null; then
+              echo "Installing jq..."
+              sudo apt-get update && sudo apt-get install -y jq
+            fi
+            
+            # Run DNS update script (now uses NLB hostnames from services)
+            chmod +x scripts/update-cloudflare-dns.sh
+            ./scripts/update-cloudflare-dns.sh || echo "⚠️  DNS update failed, but deployment continues"
+          fi
 
       - name: Get service URLs
         run: |
-          BACKEND_URL=$(kubectl get svc openflow-backend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
-          FRONTEND_URL=$(kubectl get svc openflow-frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
-          echo "Backend URL: http://${BACKEND_URL}:8080"
-          echo "Frontend URL: http://${FRONTEND_URL}"
+          echo "🌐 Service URLs (via Cloudflare SSL):"
+          echo "Frontend: https://app.openflow.world"
+          echo "Backend API: https://api.openflow.world"
+          echo ""
+          echo "📋 NLB Hostnames:"
+          echo "  Frontend NLB: $FRONTEND_NLB"
+          echo "  Backend NLB: $BACKEND_NLB"
+          echo ""
+          if [ "$NLB_READY" == "true" ]; then
+            if [ -n "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] && [ -n "${{ secrets.CLOUDFLARE_ZONE_ID }}" ]; then
+              echo "✅ DNS records automatically updated via Cloudflare API"
+              echo "🔒 SSL: Cloudflare Flexible mode (HTTPS termination at Cloudflare)"
+            else
+              echo "📋 Manual DNS Configuration Required in Cloudflare:"
+              echo "  - app.openflow.world -> $FRONTEND_NLB (CNAME, proxied ON)"
+              echo "  - api.openflow.world -> $BACKEND_NLB (CNAME, proxied ON)"
+              echo "  - SSL/TLS mode: Flexible"
+            fi
+          fi
           echo ""
           echo "CORS Configuration:"
           kubectl get deployment openflow-backend -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="CORS_ALLOWED_ORIGINS")].value}' && echo

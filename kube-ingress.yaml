@@ -1,0 +1,63 @@
+---
+# Ingress for HTTPS with AWS Application Load Balancer
+# This replaces the LoadBalancer services with an ALB that supports HTTPS
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openflow-ingress
+  annotations:
+    # Use AWS Load Balancer Controller
+    kubernetes.io/ingress.class: alb
+    # Create internet-facing ALB
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # Use Application Load Balancer (supports HTTPS)
+    alb.ingress.kubernetes.io/load-balancer-type: application
+    # SSL redirect - redirect HTTP to HTTPS
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # Health check path
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    # Health check protocol
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    # Target type - use IP mode for better performance
+    alb.ingress.kubernetes.io/target-type: ip
+    # Certificate ARN from AWS Certificate Manager (wildcard for *.openflow.world)
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:537507845275:certificate/d172270c-ae9e-414c-ae57-b539cfd7a2d4
+    # Listen on both HTTP and HTTPS
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    # Group name for organizing multiple ingresses
+    alb.ingress.kubernetes.io/group.name: openflow
+    # Backend protocol - use HTTP (ALB terminates SSL)
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+spec:
+  rules:
+    # Backend API domain
+    - host: api.openflow.world
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: openflow-backend
+                port:
+                  number: 80
+    # Frontend domain
+    - host: app.openflow.world
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: openflow-frontend
+                port:
+                  number: 80
+          # Proxy /api requests to backend
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: openflow-backend
+                port:
+                  number: 80
+

@@ -75,6 +75,51 @@ GitHub Secrets are used to securely store sensitive information required for dep
 - **Security**: Use a strong, random secret
 - **Required**: Yes
 
+## Step 4.5: Configure Azure AD Secrets (Optional)
+
+### AZURE_TENANT_ID
+- **Description**: Azure Active Directory tenant ID (Directory ID)
+- **How to get**: Azure Portal → Azure Active Directory → Overview → Tenant ID
+- **Format**: GUID (e.g., `12345678-1234-1234-1234-123456789012`)
+- **Required**: Yes (if using Azure AD authentication)
+
+### AZURE_CLIENT_ID
+- **Description**: Azure AD application (client) ID
+- **How to get**: Azure Portal → Azure Active Directory → App registrations → Your app → Application (client) ID
+- **Format**: GUID
+- **Required**: Yes (if using Azure AD authentication)
+
+### AZURE_CLIENT_SECRET
+- **Description**: Azure AD client secret value
+- **How to get**: Azure Portal → Azure Active Directory → App registrations → Your app → Certificates & secrets → Create new secret
+- **Format**: Secret string (shown only once when created)
+- **Security**: Store securely, rotate regularly
+- **Required**: Yes (if using Azure AD authentication)
+
+### AZURE_ISSUER_URI
+- **Description**: Azure AD issuer URI for JWT validation
+- **Format**: `https://login.microsoftonline.com/{tenant-id}/v2.0`
+- **Example**: `https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/v2.0`
+- **Required**: Yes (if using Azure AD authentication)
+
+### AZURE_JWK_SET_URI
+- **Description**: Azure AD JWK Set URI for token validation
+- **Format**: `https://login.microsoftonline.com/{tenant-id}/discovery/v2.0/keys`
+- **Example**: `https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/discovery/v2.0/keys`
+- **Required**: Yes (if using Azure AD authentication)
+
+### AUTH_MODE
+- **Description**: Authentication mode configuration
+- **Options**: 
+  - `both` - Support both JWT and Azure AD (default)
+  - `azure` - Azure AD only
+  - `jwt` - JWT only
+- **Format**: String
+- **Default**: `both`
+- **Required**: No (defaults to `both`)
+
+**Note**: See [Azure AD Setup Guide](azure-ad-setup.md) for detailed Azure Portal configuration instructions.
+
 ## Step 5: Encode Oracle Wallet Files
 
 ### Download Wallet
@@ -156,12 +201,15 @@ Ensure all secrets use **exact** names as listed above. The workflow is case-sen
 
 ### Required Secrets Checklist
 
+#### Core Secrets
 - [ ] `AWS_ACCESS_KEY_ID`
 - [ ] `AWS_SECRET_ACCESS_KEY`
 - [ ] `ORACLE_DB_USERNAME`
 - [ ] `ORACLE_DB_PASSWORD`
 - [ ] `ORACLE_DB_URL`
 - [ ] `JWT_SECRET`
+
+#### Oracle Wallet Secrets
 - [ ] `ORACLE_WALLET_CWALLET`
 - [ ] `ORACLE_WALLET_EWALLET`
 - [ ] `ORACLE_WALLET_KEYSTORE`
@@ -169,6 +217,20 @@ Ensure all secrets use **exact** names as listed above. The workflow is case-sen
 - [ ] `ORACLE_WALLET_SQLNET`
 - [ ] `ORACLE_WALLET_TNSNAMES`
 - [ ] `ORACLE_WALLET_TRUSTSTORE`
+
+#### Azure AD Secrets (Optional - if using Azure AD authentication)
+- [ ] `AZURE_TENANT_ID`
+- [ ] `AZURE_CLIENT_ID`
+- [ ] `AZURE_CLIENT_SECRET`
+- [ ] `AZURE_ISSUER_URI`
+- [ ] `AZURE_JWK_SET_URI`
+- [ ] `AUTH_MODE` (optional, defaults to `both`)
+
+#### Cloudflare DNS Secrets (Optional - for automatic DNS updates)
+- [ ] `CLOUDFLARE_API_TOKEN` - Cloudflare API token with DNS Edit permissions
+- [ ] `CLOUDFLARE_ZONE_ID` - Cloudflare Zone ID for openflow.world
+
+**Note**: If Cloudflare secrets are not set, DNS records must be configured manually. See [Cloudflare DNS Setup Guide](cloudflare-dns-setup.md) for details.
 
 ## Troubleshooting
 

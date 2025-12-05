@@ -55,6 +55,36 @@ spec:
             # Java system properties for Oracle wallet
             - name: JAVA_OPTS
               value: "-Doracle.net.wallet_location=(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY=/app/wallet)))"
+            - name: AZURE_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: azure-ad-secret
+                  key: tenant-id
+            - name: AZURE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: azure-ad-secret
+                  key: client-id
+            - name: AZURE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: azure-ad-secret
+                  key: client-secret
+            - name: AZURE_ISSUER_URI
+              valueFrom:
+                secretKeyRef:
+                  name: azure-ad-secret
+                  key: issuer-uri
+            - name: AZURE_JWK_SET_URI
+              valueFrom:
+                secretKeyRef:
+                  name: azure-ad-secret
+                  key: jwk-set-uri
+            - name: AUTH_MODE
+              valueFrom:
+                secretKeyRef:
+                  name: azure-ad-secret
+                  key: auth-mode
           volumeMounts:
             - name: oracle-wallet
               mountPath: /app/wallet
@@ -114,8 +144,6 @@ metadata:
   name: openflow-backend
   labels:
     app: openflow-backend
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
 spec:
   selector:
     app: openflow-backend
@@ -123,7 +151,7 @@ spec:
     - name: http
       port: 80
       targetPort: 8080
-  type: LoadBalancer
+  type: ClusterIP  # Changed to ClusterIP - Ingress handles external access
 ---
 apiVersion: v1
 kind: Service
@@ -131,8 +159,6 @@ metadata:
   name: openflow-frontend
   labels:
     app: openflow-frontend
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
 spec:
   selector:
     app: openflow-frontend
@@ -140,4 +166,4 @@ spec:
     - name: http
       port: 80
       targetPort: 80
-  type: LoadBalancer
+  type: ClusterIP  # Changed to ClusterIP - Ingress handles external access
