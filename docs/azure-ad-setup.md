@@ -95,7 +95,52 @@ You'll need the following values for GitHub Secrets:
    - **ID tokens** is checked (if needed)
 4. Click **Save**
 
-## Step 6: Add Secrets to GitHub
+## Step 6: Configure Role-Based Access Control (RBAC)
+
+OpenFlow supports two mechanisms for role assignment from Azure AD:
+
+### Option A: Azure AD Groups (Recommended)
+
+1. In Azure Portal, go to **Azure Active Directory** → **Groups**
+2. Create the following groups:
+   - **Openflow-Admins**: Users with full admin access (create/manage boards, columns, users)
+   - **Openflow-Users**: Normal users (create/move/modify tasks, comment)
+3. Add users to the appropriate groups
+4. In your App Registration, go to **Token configuration**
+5. Click **Add groups claim**
+6. Select **Security groups** and configure:
+   - For ID token: Check **Group ID**
+   - For Access token: Check **Group ID**
+7. Click **Add**
+8. Copy the **Object ID** of each group (found in Groups → select group → Overview)
+
+### Option B: App Roles
+
+1. In your App Registration, go to **App roles**
+2. Click **Create app role**
+3. Create the following roles:
+   - **Admin**:
+     - Display name: `Administrator`
+     - Allowed member types: `Users/Groups`
+     - Value: `Admin`
+     - Description: `Full access to create and manage boards, columns, and users`
+   - **User**:
+     - Display name: `Normal User`
+     - Allowed member types: `Users/Groups`
+     - Value: `User`
+     - Description: `Can create, move, and modify tasks`
+4. Go to **Enterprise applications** → Select your app → **Users and groups**
+5. Click **Add user/group** and assign roles to users/groups
+
+### Role Mapping in OpenFlow
+
+| Role in OpenFlow | Azure AD Group | App Role | Access |
+|------------------|----------------|----------|--------|
+| ADMIN | Openflow-Admins | Admin | Create/manage boards, columns, and user access |
+| USER | Openflow-Users | User | Create/move/modify tasks and comment |
+| Anonymous | (not authenticated) | - | View public boards only |
+
+## Step 7: Add Secrets to GitHub
 
 1. Go to your GitHub repository
 2. Navigate to **Settings** → **Secrets and variables** → **Actions**
@@ -106,8 +151,10 @@ You'll need the following values for GitHub Secrets:
    - `AZURE_ISSUER_URI` - Issuer URI (from Step 4)
    - `AZURE_JWK_SET_URI` - JWK Set URI (from Step 4)
    - `AUTH_MODE` - `both`, `azure`, or `jwt` (optional, defaults to `both`)
+   - `AZURE_ADMIN_GROUP_ID` - Object ID of Openflow-Admins group (if using groups)
+   - `AZURE_USER_GROUP_ID` - Object ID of Openflow-Users group (optional)
 
-## Step 7: Environment-Specific Configuration
+## Step 8: Environment-Specific Configuration
 
 ### Development Environment
 - Use `http://localhost:8080/login/oauth2/code/azure` as redirect URI
@@ -168,9 +215,18 @@ You'll need the following values for GitHub Secrets:
    - Verify user has `authProvider = "azure"`
    - Verify `azureAdId` is set
    - Verify `password` is null (Azure AD users don't have passwords)
+   - Verify `role` is set correctly (ADMIN or USER)
 
-3. **Check Backend Logs**:
+3. **Test Role Assignment**:
+   - Log in with a user in Openflow-Admins group
+   - Verify the user can create boards and manage columns
+   - Log in with a user in Openflow-Users group
+   - Verify the user can only create/modify tasks
+   - Access `/public/boards` without authentication to verify anonymous access
+
+5. **Check Backend Logs**:
    - Look for Azure AD authentication messages
+   - Look for role extraction logs (e.g., "User is member of admin group")
    - Check for any errors in user sync process
 
 ## Security Best Practices
