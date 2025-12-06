@@ -185,3 +185,4 @@ spec:
       targetPort: 80
   type: LoadBalancer  # NLB for external access, Cloudflare handles SSL
 # Trigger deployment 20251206180627
+# Trigger deployment 20251206182530
