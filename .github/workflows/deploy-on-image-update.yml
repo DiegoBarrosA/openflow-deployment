@@ -103,6 +103,8 @@ jobs:
             --from-literal=issuer-uri='${{ secrets.AZURE_ISSUER_URI }}' \
             --from-literal=jwk-set-uri='${{ secrets.AZURE_JWK_SET_URI }}' \
             --from-literal=auth-mode='${{ secrets.AUTH_MODE }}' \
+            --from-literal=admin-group-id='${{ secrets.AZURE_ADMIN_GROUP_ID }}' \
+            --from-literal=user-group-id='${{ secrets.AZURE_USER_GROUP_ID }}' \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Install GitHub CLI
@@ -378,6 +380,8 @@ jobs:
           [ -z "${{ secrets.AZURE_CLIENT_ID }}" ] && echo "⚠️ AZURE_CLIENT_ID missing (Azure SSO will be disabled)" || echo "✅ AZURE_CLIENT_ID set"
           [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ] && echo "⚠️ AZURE_CLIENT_SECRET missing (Azure SSO will be disabled)" || echo "✅ AZURE_CLIENT_SECRET set"
           [ -z "${{ secrets.AZURE_ISSUER_URI }}" ] && echo "⚠️ AZURE_ISSUER_URI missing (Azure SSO will be disabled)" || echo "✅ AZURE_ISSUER_URI set"
+          [ -z "${{ secrets.AZURE_ADMIN_GROUP_ID }}" ] && echo "⚠️ AZURE_ADMIN_GROUP_ID missing (RBAC admin role mapping disabled)" || echo "✅ AZURE_ADMIN_GROUP_ID set"
+          [ -z "${{ secrets.AZURE_USER_GROUP_ID }}" ] && echo "ℹ️ AZURE_USER_GROUP_ID not set (optional)" || echo "✅ AZURE_USER_GROUP_ID set"
           echo "Azure AD validation complete"
 
       - name: Validate Wallet Secrets Format
