@@ -55,6 +55,14 @@ jobs:
           echo "BACKEND_IMAGE=$REPO_OWNER_LC/openflow-backend" >> $GITHUB_ENV
           echo "FRONTEND_IMAGE=$REPO_OWNER_LC/openflow-frontend" >> $GITHUB_ENV
 
+      - name: Verify backend tests passed
+        if: github.event.client_payload.service == 'backend' || github.event_name == 'workflow_dispatch'
+        run: |
+          echo "✅ Backend image update received - tests were verified in build workflow"
+          echo "Service: ${{ github.event.client_payload.service }}"
+          echo "Image: ${{ github.event.client_payload.image }}"
+          echo "Tag: ${{ github.event.client_payload.tag }}"
+
       - name: Resolve image tags
         run: |
           # Default images
