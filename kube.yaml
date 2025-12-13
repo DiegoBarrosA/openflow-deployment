@@ -129,6 +129,12 @@ spec:
                   name: aws-s3-secret
                   key: secret-access-key
                   optional: true
+            - name: AWS_SESSION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aws-s3-secret
+                  key: session-token
+                  optional: true
           volumeMounts:
             - name: oracle-wallet
               mountPath: /app/wallet
