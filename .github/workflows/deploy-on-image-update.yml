@@ -115,6 +115,16 @@ jobs:
             --from-literal=user-group-id='${{ secrets.AZURE_USER_GROUP_ID }}' \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create AWS S3 Secret
+        run: |
+          kubectl create secret generic aws-s3-secret \
+            --from-literal=bucket-name='${{ secrets.AWS_S3_BUCKET_NAME }}' \
+            --from-literal=region='${{ secrets.AWS_REGION }}' \
+            --from-literal=enabled='${{ secrets.AWS_S3_ENABLED }}' \
+            --from-literal=access-key-id='${{ secrets.AWS_ACCESS_KEY_ID }}' \
+            --from-literal=secret-access-key='${{ secrets.AWS_SECRET_ACCESS_KEY }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Install GitHub CLI
         run: |
           if ! command -v gh >/dev/null 2>&1; then
