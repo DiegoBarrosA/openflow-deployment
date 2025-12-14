@@ -263,27 +263,43 @@ Se evaluó el performance del sistema utilizando las siguientes herramientas y m
 
 ### 5.2 Arquitectura de Microservicios
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Cloudflare (DNS/SSL)                      │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    AWS EKS Kubernetes                        │
-│  ┌──────────────────┐    ┌──────────────────┐               │
-│  │  openflow-       │    │  openflow-       │               │
-│  │  frontend        │◄──►│  backend         │               │
-│  │  (React/Nginx)   │    │  (Spring Boot)   │               │
-│  └──────────────────┘    └──────────────────┘               │
-│           │                       │                          │
-└───────────┼───────────────────────┼──────────────────────────┘
-            │                       │
-            ▼                       ▼
-┌──────────────────┐    ┌──────────────────────────────────────┐
-│   AWS S3         │    │  Oracle Autonomous Database          │
-│   (Attachments)  │    │  (Cloud)                             │
-└──────────────────┘    └──────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Internet
+        User[Usuario]
+        Cloudflare[Cloudflare DNS/SSL]
+    end
+
+    subgraph AWS_EKS[AWS EKS Kubernetes]
+        Frontend[openflow-frontend<br/>React + Nginx]
+        Backend[openflow-backend<br/>Spring Boot]
+    end
+
+    subgraph CloudServices[Servicios en la Nube]
+        S3[AWS S3<br/>Attachments]
+        Oracle[(Oracle Autonomous DB<br/>Cloud)]
+        SES[AWS SES<br/>Email Service]
+        AzureAD[Azure AD<br/>Authentication]
+    end
+
+    subgraph CI_CD[CI/CD Pipeline]
+        GitHub[GitHub Repos]
+        Actions[GitHub Actions]
+        GHCR[GitHub Container Registry]
+    end
+
+    User --> Cloudflare
+    Cloudflare --> Frontend
+    Frontend <--> Backend
+    Backend --> Oracle
+    Backend --> S3
+    Backend --> SES
+    Backend --> AzureAD
+    Frontend --> AzureAD
+
+    GitHub --> Actions
+    Actions --> GHCR
+    GHCR --> AWS_EKS
 ```
 
 ### 5.3 Componentes en la Nube
