@@ -78,8 +78,17 @@ Se realizaron pruebas manuales exhaustivas del funcionamiento del sistema utiliz
 | **Type Checking** | PropTypes | Validación de props React | ✅ Implementado |
 
 ### Proceso de CI/CD Automatizado:
-```
-Push a GitHub → GitHub Actions → Build Docker Image → Push a GHCR → Deploy a Kubernetes
+
+```mermaid
+flowchart LR
+    A[Developer Push] --> B[GitHub Repository]
+    B --> C{GitHub Actions}
+    C --> D[Run Tests]
+    D --> E[Build Docker Image]
+    E --> F[Push to GHCR]
+    F --> G[Deploy to Kubernetes]
+    G --> H[Rolling Update]
+    H --> I[Production Live]
 ```
 
 ---
