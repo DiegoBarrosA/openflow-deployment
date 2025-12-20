@@ -1,0 +1,25 @@
+# ZAP Scan Rules Configuration
+# Format: rule_id	action	description
+# Actions: IGNORE, WARN, FAIL
+
+# Informational alerts - ignore
+10021	IGNORE	X-Content-Type-Options Header Missing
+10036	IGNORE	Server Leaks Version Information
+
+# Low risk - warn only
+10035	WARN	Strict-Transport-Security Header Not Set
+10098	WARN	Cross-Domain Misconfiguration
+
+# Medium risk - warn
+10010	WARN	Cookie No HttpOnly Flag
+10011	WARN	Cookie Without Secure Flag
+90033	WARN	Loosely Scoped Cookie
+
+# High/Critical - fail the build
+10016	FAIL	Web Browser XSS Protection Not Enabled
+10017	FAIL	Cross-Domain JavaScript Source File Inclusion
+40012	FAIL	Cross Site Scripting (Reflected)
+40014	FAIL	Cross Site Scripting (Persistent)
+90020	FAIL	Remote OS Command Injection
+90023	FAIL	XML External Entity Attack
+

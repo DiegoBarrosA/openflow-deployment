@@ -1,0 +1,216 @@
+name: Performance Test (JMeter)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Target API URL'
+        required: false
+        default: 'https://api.openflow.world'
+      threads:
+        description: 'Number of concurrent users'
+        required: false
+        default: '50'
+      duration:
+        description: 'Test duration in seconds'
+        required: false
+        default: '60'
+      ramp_up:
+        description: 'Ramp-up period in seconds'
+        required: false
+        default: '10'
+
+jobs:
+  performance-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install JMeter
+        run: |
+          wget -q https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
+          tar -xzf apache-jmeter-5.6.3.tgz
+          echo "$PWD/apache-jmeter-5.6.3/bin" >> $GITHUB_PATH
+
+      - name: Create JMeter test plan
+        run: |
+          mkdir -p jmeter-tests
+          cat > jmeter-tests/load-test.jmx << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+            <hashTree>
+              <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="OpenFlow API Load Test" enabled="true">
+                <stringProp name="TestPlan.comments"></stringProp>
+                <boolProp name="TestPlan.functional_mode">false</boolProp>
+                <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+                <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+                  <collectionProp name="Arguments.arguments">
+                    <elementProp name="BASE_URL" elementType="Argument">
+                      <stringProp name="Argument.name">BASE_URL</stringProp>
+                      <stringProp name="Argument.value">${__P(base_url,${{ github.event.inputs.target_url }})}</stringProp>
+                      <stringProp name="Argument.metadata">=</stringProp>
+                    </elementProp>
+                  </collectionProp>
+                </elementProp>
+              </TestPlan>
+              <hashTree>
+                <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="API Users" enabled="true">
+                  <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+                  <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+                    <boolProp name="LoopController.continue_forever">false</boolProp>
+                    <intProp name="LoopController.loops">-1</intProp>
+                  </elementProp>
+                  <stringProp name="ThreadGroup.num_threads">${__P(threads,${{ github.event.inputs.threads }})}</stringProp>
+                  <stringProp name="ThreadGroup.ramp_time">${__P(ramp_up,${{ github.event.inputs.ramp_up }})}</stringProp>
+                  <boolProp name="ThreadGroup.scheduler">true</boolProp>
+                  <stringProp name="ThreadGroup.duration">${__P(duration,${{ github.event.inputs.duration }})}</stringProp>
+                  <stringProp name="ThreadGroup.delay">0</stringProp>
+                </ThreadGroup>
+                <hashTree>
+                  <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Health Check" enabled="true">
+                    <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+                      <collectionProp name="Arguments.arguments"/>
+                    </elementProp>
+                    <stringProp name="HTTPSampler.domain"></stringProp>
+                    <stringProp name="HTTPSampler.port"></stringProp>
+                    <stringProp name="HTTPSampler.protocol"></stringProp>
+                    <stringProp name="HTTPSampler.contentEncoding"></stringProp>
+                    <stringProp name="HTTPSampler.path">${BASE_URL}/actuator/health</stringProp>
+                    <stringProp name="HTTPSampler.method">GET</stringProp>
+                    <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+                    <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+                    <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+                    <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+                    <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+                    <stringProp name="HTTPSampler.connect_timeout">5000</stringProp>
+                    <stringProp name="HTTPSampler.response_timeout">10000</stringProp>
+                  </HTTPSamplerProxy>
+                  <hashTree>
+                    <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Response Code 200" enabled="true">
+                      <collectionProp name="Asserion.test_strings">
+                        <stringProp name="49586">200</stringProp>
+                      </collectionProp>
+                      <stringProp name="Assertion.custom_message"></stringProp>
+                      <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+                      <boolProp name="Assertion.assume_success">false</boolProp>
+                      <intProp name="Assertion.test_type">8</intProp>
+                    </ResponseAssertion>
+                    <hashTree/>
+                    <DurationAssertion guiclass="DurationAssertionGui" testclass="DurationAssertion" testname="Response Time &lt; 2s" enabled="true">
+                      <stringProp name="DurationAssertion.duration">2000</stringProp>
+                    </DurationAssertion>
+                    <hashTree/>
+                  </hashTree>
+                  <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Get Public Boards" enabled="true">
+                    <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+                      <collectionProp name="Arguments.arguments"/>
+                    </elementProp>
+                    <stringProp name="HTTPSampler.domain"></stringProp>
+                    <stringProp name="HTTPSampler.port"></stringProp>
+                    <stringProp name="HTTPSampler.protocol"></stringProp>
+                    <stringProp name="HTTPSampler.contentEncoding"></stringProp>
+                    <stringProp name="HTTPSampler.path">${BASE_URL}/api/boards/public</stringProp>
+                    <stringProp name="HTTPSampler.method">GET</stringProp>
+                    <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+                    <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+                    <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+                    <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+                    <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+                    <stringProp name="HTTPSampler.connect_timeout">5000</stringProp>
+                    <stringProp name="HTTPSampler.response_timeout">10000</stringProp>
+                  </HTTPSamplerProxy>
+                  <hashTree>
+                    <DurationAssertion guiclass="DurationAssertionGui" testclass="DurationAssertion" testname="Response Time &lt; 3s" enabled="true">
+                      <stringProp name="DurationAssertion.duration">3000</stringProp>
+                    </DurationAssertion>
+                    <hashTree/>
+                  </hashTree>
+                  <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+                    <stringProp name="ConstantTimer.delay">1000</stringProp>
+                  </ConstantTimer>
+                  <hashTree/>
+                </hashTree>
+              </hashTree>
+            </hashTree>
+          </jmeterTestPlan>
+          EOF
+
+      - name: Run JMeter test
+        run: |
+          jmeter -n \
+            -t jmeter-tests/load-test.jmx \
+            -l jmeter-tests/results.jtl \
+            -e -o jmeter-tests/report \
+            -Jbase_url=${{ github.event.inputs.target_url }} \
+            -Jthreads=${{ github.event.inputs.threads }} \
+            -Jduration=${{ github.event.inputs.duration }} \
+            -Jramp_up=${{ github.event.inputs.ramp_up }}
+
+      - name: Upload JMeter Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-report
+          path: jmeter-tests/report/
+          retention-days: 30
+
+      - name: Upload JMeter Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-results
+          path: jmeter-tests/results.jtl
+          retention-days: 30
+
+      - name: Analyze results and check thresholds
+        run: |
+          echo "Analyzing JMeter results..."
+          
+          # Parse results from JTL file
+          TOTAL=$(wc -l < jmeter-tests/results.jtl)
+          TOTAL=$((TOTAL - 1))  # Exclude header
+          
+          if [ -f jmeter-tests/report/statistics.json ]; then
+            AVG_RESPONSE=$(jq '.Total.meanResTime' jmeter-tests/report/statistics.json 2>/dev/null || echo "N/A")
+            ERROR_RATE=$(jq '.Total.errorPct' jmeter-tests/report/statistics.json 2>/dev/null || echo "0")
+            THROUGHPUT=$(jq '.Total.throughput' jmeter-tests/report/statistics.json 2>/dev/null || echo "N/A")
+            P95=$(jq '.Total.pct95ResTime' jmeter-tests/report/statistics.json 2>/dev/null || echo "N/A")
+            
+            echo "=================================="
+            echo "Performance Test Results Summary"
+            echo "=================================="
+            echo "Total Requests: $TOTAL"
+            echo "Average Response Time: ${AVG_RESPONSE}ms"
+            echo "95th Percentile: ${P95}ms"
+            echo "Throughput: ${THROUGHPUT} req/s"
+            echo "Error Rate: ${ERROR_RATE}%"
+            echo "=================================="
+            
+            # Check thresholds
+            ERROR_THRESHOLD=5
+            P95_THRESHOLD=3000
+            
+            # Check error rate
+            ERROR_INT=$(echo "$ERROR_RATE" | cut -d'.' -f1)
+            if [ "$ERROR_INT" -gt "$ERROR_THRESHOLD" ]; then
+              echo "::error::Error rate ($ERROR_RATE%) exceeds threshold ($ERROR_THRESHOLD%)"
+              exit 1
+            fi
+            
+            # Check P95 response time
+            P95_INT=$(echo "$P95" | cut -d'.' -f1)
+            if [ "$P95_INT" -gt "$P95_THRESHOLD" ]; then
+              echo "::warning::P95 response time (${P95}ms) exceeds threshold (${P95_THRESHOLD}ms)"
+            fi
+            
+            echo "All performance thresholds passed!"
+          else
+            echo "::warning::Could not parse statistics.json, skipping threshold checks"
+          fi
+

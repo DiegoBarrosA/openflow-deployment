@@ -1,0 +1,72 @@
+name: Security Scan (OWASP ZAP)
+
+on:
+  workflow_run:
+    workflows: ["Deploy (on image update or manual)"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Target URL to scan'
+        required: false
+        default: 'https://api.openflow.world'
+
+jobs:
+  zap-scan:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set target URL
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "TARGET_URL=${{ github.event.inputs.target_url }}" >> $GITHUB_ENV
+          else
+            echo "TARGET_URL=https://api.openflow.world" >> $GITHUB_ENV
+          fi
+
+      - name: Wait for deployment to stabilize
+        run: |
+          echo "Waiting 60 seconds for deployment to stabilize..."
+          sleep 60
+
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ env.TARGET_URL }}
+          rules_file_name: '.zap/rules.tsv'
+          allow_issue_writing: false
+        continue-on-error: true
+
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: report_html.html
+          retention-days: 30
+
+      - name: Check for critical vulnerabilities
+        run: |
+          if [ -f "report_json.json" ]; then
+            CRITICAL=$(jq '[.site[].alerts[] | select(.riskcode == "3")] | length' report_json.json 2>/dev/null || echo "0")
+            HIGH=$(jq '[.site[].alerts[] | select(.riskcode == "2")] | length' report_json.json 2>/dev/null || echo "0")
+            
+            echo "Critical vulnerabilities: $CRITICAL"
+            echo "High vulnerabilities: $HIGH"
+            
+            if [ "$CRITICAL" -gt 0 ]; then
+              echo "::error::Found $CRITICAL critical vulnerabilities!"
+              exit 1
+            fi
+            
+            if [ "$HIGH" -gt 5 ]; then
+              echo "::warning::Found $HIGH high-risk vulnerabilities"
+            fi
+          else
+            echo "No JSON report found, skipping vulnerability count"
+          fi
+
